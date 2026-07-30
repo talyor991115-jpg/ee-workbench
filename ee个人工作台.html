@@ -1352,7 +1352,7 @@ function pgSpace(){
   let notes=D.spaceNotes.filter(n=>n.tab===tab);
   if(sq)notes=notes.filter(n=>n.title.toLowerCase().includes(sq)||n.content.toLowerCase().includes(sq)||n.tags.some(t=>t.toLowerCase().includes(sq)));
   notes.sort((a,b)=>b.updatedAt-a.updatedAt);
-  return '<div class="pg-hd"><div><div class="page-title">我的空间</div><div class="pg-sub">备忘录 · 读书笔记 · 灵感 · 购物清单 '+helpBtn('四个标签分类管理。支持搜索和标签。对笔记可生成简短摘要和待办，不会删除原文。')+'</div></div><button class="btn btn-p" id="btn-new-space">+ 新建</button></div>'+
+  return '<div class="pg-hd"><div><div class="page-title">我的空间</div><div class="pg-sub">备忘录 · 读书笔记 · 灵感 · 购物清单</div></div><button class="btn btn-p" id="btn-new-space">+ 新建</button></div>'+
 
   '<div class="tabs">'+['memo','reading','inspiration','shopping'].map(t=>'<button class="tab-btn'+(tab===t?' active':'')+'" onclick="setSpaceTab(\''+t+'\')">'+({memo:'备忘录',reading:'读书笔记',inspiration:'灵感',shopping:'购物清单'}[t])+' ('+D.spaceNotes.filter(n=>n.tab===t).length+')</button>').join('')+'</div>'+
 
@@ -1366,22 +1366,29 @@ function getSpaceTab(){try{return sessionStorage.getItem('ee_space_tab')||'memo'
 function setSpaceTab(t){try{sessionStorage.setItem('ee_space_tab',t)}catch(e){}render('space')}
 
 function addSpaceNote(){
-  toast('打开新建窗口...');
-  const tab=getSpaceTab();
-  const labels={memo:'备忘录',reading:'读书笔记',inspiration:'灵感',shopping:'购物清单'};
-  modal('新建'+(labels[tab]||'备忘录'),
-    '<div class="fg"><label class="fl">标题</label><input class="fi" id="sn-title" autofocus></div>'+
-    '<div class="fg"><label class="fl">内容</label><textarea class="ft" id="sn-content"></textarea></div>'+
-    '<div class="fg"><label class="fl">标签(逗号分隔)</label><input class="fi" id="sn-tags" placeholder="如：重要,待整理"></div>',
-    function(){
-      const title=document.getElementById('sn-title');if(!title||!title.value.trim())return;
-      const content=document.getElementById('sn-content');
-      const tagsEl=document.getElementById('sn-tags');
-      const tags=(tagsEl?tagsEl.value:'').split(/[,，]/).map(function(s){return s.trim()}).filter(Boolean);
-      D.spaceNotes.unshift({id:gid(),tab:tab,title:title.value.trim(),content:content?content.value:'',tags:tags,createdAt:Date.now(),updatedAt:Date.now(),aiSummary:''});
-      save();render('space');toast('已保存');
-    }
-  );
+  var tab,labels,label,o,m,t,i,c,g,sb;
+  tab=getSpaceTab();
+  labels={memo:'备忘录',reading:'读书笔记',inspiration:'灵感',shopping:'购物清单'};
+  label=labels[tab]||'备忘录';
+  o=document.createElement('div');o.className='modal-overlay';
+  m=document.createElement('div');m.className='modal';
+  m.innerHTML='<div class=\"modal-title\">新建'+label+'</div>'+
+    '<div class=\"fg\"><label class=\"fl\">标题</label><input class=\"fi\" id=\"sn-title\" autofocus></div>'+
+    '<div class=\"fg\"><label class=\"fl\">内容</label><textarea class=\"ft\" id=\"sn-content\"></textarea></div>'+
+    '<div class=\"fg\"><label class=\"fl\">标签(逗号分隔)</label><input class=\"fi\" id=\"sn-tags\" placeholder=\"如：重要,待整理\"></div>'+
+    '<div class=\"modal-actions\"><button class=\"btn btn-s\" id=\"sn-cancel\">取消</button><button class=\"btn btn-p\" id=\"sn-save\">保存</button></div>';
+  o.appendChild(m);document.body.appendChild(o);
+  o.onclick=function(e){if(e.target===o){o.remove()}};
+  document.getElementById('sn-cancel').onclick=function(){o.remove()};
+  document.getElementById('sn-save').onclick=function(){
+    t=document.getElementById('sn-title');if(!t||!t.value.trim())return;
+    c=document.getElementById('sn-content');
+    g=document.getElementById('sn-tags');
+    s=(g?g.value:'').split(/[,，]/);
+    i=[];for(var j=0;j<s.length;j++){var x=s[j].trim();if(x)i.push(x)}
+    D.spaceNotes.unshift({id:gid(),tab:tab,title:t.value.trim(),content:c?c.value:'',tags:i,createdAt:Date.now(),updatedAt:Date.now(),aiSummary:''});
+    save();render('space');o.remove();
+  };
 }
 
 function editSpaceNote(id){
