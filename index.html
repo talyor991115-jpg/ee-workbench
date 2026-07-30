@@ -506,11 +506,13 @@ function toast(msg){const c=document.getElementById('toast-ct');const e=document
 
 // ═══════════════ MODAL ═══════════════
 function modal(title,body,onSave){
+  if(cm)closeModal();
   const o=document.createElement('div');o.className='modal-overlay';
   o.innerHTML='<div class="modal"><div class="modal-title">'+title+'</div><div class="modal-body">'+body+'</div><div class="modal-actions"><button class="btn btn-s" onclick="closeModal()">取消</button><button class="btn btn-p" id="modal-save">保存</button></div></div>';
   o.addEventListener('click',e=>{if(e.target===o)closeModal()});
   document.body.appendChild(o);cm={overlay:o,onSave};
-  document.getElementById('modal-save').addEventListener('click',()=>{if(onSave)onSave();closeModal()});
+  const saveBtn=document.getElementById('modal-save');
+  if(saveBtn)saveBtn.addEventListener('click',()=>{if(onSave){try{onSave()}catch(e){toast('保存失败: '+e.message)}closeModal()}});
 }
 function closeModal(){if(cm){cm.overlay.remove();cm=null}}
 function mv(s){const e=document.querySelector(s);return e?e.value:''}
@@ -1357,13 +1359,17 @@ function getSpaceTab(){try{return sessionStorage.getItem('ee_space_tab')||'memo'
 function setSpaceTab(t){try{sessionStorage.setItem('ee_space_tab',t)}catch(e){}render('space')}
 
 function addSpaceNote(){
-  const tab=getSpaceTab();
-  modal('新建'+({memo:'备忘录',reading:'读书笔记',inspiration:'灵感',shopping:'购物清单'}[tab]),'<div class="fg"><label class="fl">标题</label><input class="fi" id="sn-title"></div><div class="fg"><label class="fl">内容</label><textarea class="ft" id="sn-content"></textarea></div><div class="fg"><label class="fl">标签(逗号分隔)</label><input class="fi" id="sn-tags" placeholder="如：重要,待整理"></div>',()=>{
-    const t=mv('#sn-title').trim();if(!t)return;
-    const tags=mv('#sn-tags').split(',').map(s=>s.trim()).filter(Boolean);
-    D.spaceNotes.unshift({id:gid(),tab,title:t,content:mv('#sn-content'),tags,createdAt:Date.now(),updatedAt:Date.now(),aiSummary:''});
-    save();render('space');
-  });
+  try{
+    const tab=getSpaceTab();
+    const labels={memo:'备忘录',reading:'读书笔记',inspiration:'灵感',shopping:'购物清单'};
+    const label=labels[tab]||'备忘录';
+    modal('新建'+label,'<div class="fg"><label class="fl">标题</label><input class="fi" id="sn-title"></div><div class="fg"><label class="fl">内容</label><textarea class="ft" id="sn-content"></textarea></div><div class="fg"><label class="fl">标签(逗号分隔)</label><input class="fi" id="sn-tags" placeholder="如：重要,待整理"></div>',()=>{
+      const t=mv('#sn-title');if(!t||!t.trim())return;
+      const tags=(mv('#sn-tags')||'').split(/[,，]/).map(s=>s.trim()).filter(Boolean);
+      D.spaceNotes.unshift({id:gid(),tab,title:t.trim(),content:mv('#sn-content')||'',tags,createdAt:Date.now(),updatedAt:Date.now(),aiSummary:''});
+      save();render('space');
+    });
+  }catch(e){toast('新建失败: '+e.message)}
 }
 
 function editSpaceNote(id){
