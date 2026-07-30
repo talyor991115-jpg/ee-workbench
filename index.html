@@ -1009,16 +1009,13 @@ async function refreshAllMarketData(force){
   }catch(e){stockStatus='离线·快照';updateStockCard(null)}
 
   try{
-    var s=document.createElement('script');var done=false,ts=Date.now();
-    s.src='https://hq.sinajs.cn/list=hf_XAU';
-    s.onload=function(){done=true;s.remove();
-      var au=window.hq_str_hf_XAU;if(au){var p=au.split(',');var usd=parseFloat(p[0]);if(usd>0){D.goldData=D.goldData||{};var cny=(usd*6.76/31.1035).toFixed(2);
-        D.goldData.goldPrice={price:cny,buyback:(cny*0.997).toFixed(2),sell:(cny*1.003).toFixed(2),updatedAt:new Date(ts).toLocaleString('zh-CN'),source:'新浪财经',ts};
-        goldStatus='在线';updateGoldCard(D.goldData.goldPrice);save();}}
-    };
-    s.onerror=function(){s.remove();if(!done){done=true;goldStatus='离线·缓存';if(gv)updateGoldCard(gv)}};
-    document.head.appendChild(s);
-    setTimeout(function(){if(!done){done=true;s.remove();goldStatus='离线·缓存';if(gv)updateGoldCard(gv)}},5000);
+    var auResp=await fetch('https://api.gold-api.com/price/XAU',{signal:AbortSignal.timeout(5000)});
+    if(auResp.ok){
+      var auData=await auResp.json();var usd=parseFloat(auData.price);if(usd>0){var ts=Date.now();D.goldData=D.goldData||{};
+        var cny=(usd*6.76/31.1035).toFixed(2);
+        D.goldData.goldPrice={price:cny,buyback:(cny*0.997).toFixed(2),sell:(cny*1.003).toFixed(2),updatedAt:new Date(ts).toLocaleString('zh-CN'),source:'Gold-API.com',ts};
+        goldStatus='在线';updateGoldCard(D.goldData.goldPrice);save();}
+    }else{goldStatus='离线·缓存';if(gv)updateGoldCard(gv)}
   }catch(e){goldStatus='离线·缓存';if(gv)updateGoldCard(gv)}
 }
 
