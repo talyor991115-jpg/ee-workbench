@@ -1352,7 +1352,7 @@ function pgSpace(){
   let notes=D.spaceNotes.filter(n=>n.tab===tab);
   if(sq)notes=notes.filter(n=>n.title.toLowerCase().includes(sq)||n.content.toLowerCase().includes(sq)||n.tags.some(t=>t.toLowerCase().includes(sq)));
   notes.sort((a,b)=>b.updatedAt-a.updatedAt);
-  var h='<div class="pg-hd"><div><div class="page-title">我的空间</div><div class="pg-sub">备忘录 · 读书笔记 · 灵感 · 购物清单</div></div><button class="btn btn-p" id="btn-new-space">+ 新建</button></div>';
+  var h='<div class="pg-hd"><div><div class="page-title">我的空间</div><div class="pg-sub">备忘录 · 读书笔记 · 灵感 · 购物清单</div></div><span id="space-btn-slot"></span></div>';
 
   h+='<div class="tabs">'+['memo','reading','inspiration','shopping'].map(function(t){return '<button class="tab-btn'+(tab===t?' active':'')+'" onclick="setSpaceTab(\''+t+'\')">'+({memo:'备忘录',reading:'读书笔记',inspiration:'灵感',shopping:'购物清单'}[t])+' ('+D.spaceNotes.filter(function(n){return n.tab===t}).length+')</button>'}).join('')+'</div>';
 
@@ -1493,7 +1493,15 @@ function bindPg(p){
   if(p==='ai'){const inp=document.getElementById('chat-inp');if(inp)setTimeout(()=>inp.focus(),100)}
   if(p==='space'){
     const inp=document.getElementById('space-search');if(inp){inp.focus();const v=inp.value;inp.value='';inp.value=v;}
-    const btn=document.getElementById('btn-new-space');if(btn)btn.onclick=function(){addSpaceNote()};
+    setTimeout(function(){
+      const slot=document.getElementById('space-btn-slot');
+      if(!slot)return;
+      slot.innerHTML='';
+      const btn=document.createElement('button');
+      btn.className='btn btn-p';btn.textContent='+ 新建';
+      btn.onclick=function(e){e.preventDefault();e.stopPropagation();addSpaceNote();};
+      slot.appendChild(btn);
+    },50);
   }
 }
 
@@ -1524,10 +1532,6 @@ function isLoggedIn(){
 // ═══════════════ INIT ═══════════════
 function initApp(){
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(cm){closeModal();return}if(document.querySelector('.more-overlay')){closeMore();return}}});
-  document.addEventListener('click',function(e){
-    var btn=e.target.closest('button');if(!btn)return;
-    if(btn.id==='btn-new-space'){addSpaceNote();return}
-  });
   document.getElementById('topbar-date').textContent=new Date().toLocaleDateString('zh-CN',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
   nav('today');
 }
