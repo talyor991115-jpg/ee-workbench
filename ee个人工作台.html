@@ -1512,6 +1512,10 @@ function isLoggedIn(){
 // ═══════════════ INIT ═══════════════
 function initApp(){
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(cm){closeModal();return}if(document.querySelector('.more-overlay')){closeMore();return}}});
+  document.getElementById('main-content').addEventListener('click',function(e){
+    const btn=e.target.closest('button');if(!btn)return;
+    if(btn.id==='btn-new-space')addSpaceNote();
+  });
   document.getElementById('topbar-date').textContent=new Date().toLocaleDateString('zh-CN',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
   nav('today');
 }
