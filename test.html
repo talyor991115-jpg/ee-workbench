@@ -1,0 +1,11 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Test</title></head><body>
+<h1>Button Test</h1>
+<button id="test-btn" onclick="document.getElementById('out').textContent='CLICKED at '+new Date()">Click Me</button>
+<div id="out"></div>
+<script>
+console.log('Script loaded');
+document.getElementById('test-btn').addEventListener('click',function(){
+  console.log('Event listener also fired');
+});
+</script>
+</body></html>
