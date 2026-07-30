@@ -451,8 +451,7 @@ function nowDate(){return new Date().toISOString().slice(0,10)}
 let cp='today',cm=null,spaceSearchTerm='';
 
 function nav(p,h){
-  if(cp==='gold'&&p!=='gold'){clearInterval(goldTimer);clearInterval(stockTimer)}
-  if(cp==='review'&&p!=='review'){clearInterval(reviewTimer);reviewTimer=null}
+  if(cp==='gold'&&p!=='gold'){clearInterval(goldTimer)}
   cp=p;
   document.querySelectorAll('.nav-item,.mob-nav-item').forEach(e=>e.classList.remove('active'));
   const dn=document.querySelector('.nav-item[data-p="'+p+'"]');
@@ -554,17 +553,15 @@ function wday(d){return['日','一','二','三','四','五','六'][new Date(d).g
 // ═══════════════ AI CALL ═══════════════
 async function aiCall(prompt){
   if(!D.settings.aiKey){toast('请先设置API Key');return null}
-  let r,t;
   try{
-    r=await fetch('https://api.deepseek.com/anthropic/v1/messages',{
-      method:'POST',headers:{'Content-Type':'application/json','x-api-key':D.settings.aiKey,'anthropic-version':'2023-06-01'},
-      body:JSON.stringify({model:'deepseek-v4-flash',max_tokens:1024,messages:[{role:'user',content:prompt}]})
+    const r=await fetch('https://api.deepseek.com/v1/chat/completions',{
+      method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+D.settings.aiKey},
+      body:JSON.stringify({model:'deepseek-chat',max_tokens:1024,messages:[{role:'user',content:prompt}]})
     });
-    if(r.ok){const d=await r.json();const txt=d.content?.find(c=>c.type==='text')?.text||d.content?.[0]?.text||'';if(txt)return txt}
-    t=await r.text();
-  }catch(e){}
-  toast('AI错误: '+(r?r.status:'网络')+' '+(t||'').slice(0,80));
-  return null;
+    if(!r.ok){toast('AI错误: '+r.status);return null}
+    const d=await r.json();
+    return d.choices?.[0]?.message?.content||'';
+  }catch(e){toast('AI网络错误');return null}
 }
 // ═══════════════ CALENDAR ═══════════════
 function fmtLocalDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
@@ -934,9 +931,8 @@ function pgGold(){
 
 function updateTimers(){
   clearInterval(goldTimer);clearInterval(stockTimer);
-  fetchGoldPrice();fetchStockPrices();
-  goldTimer=setInterval(fetchGoldPrice,1000);
-  stockTimer=setInterval(fetchStockPrices,60000);
+  refreshAllMarketData(false);
+  goldTimer=setInterval(()=>refreshAllMarketData(false),300000);
 }
 
 // ── Card 1: 实时金价 ──
@@ -990,106 +986,33 @@ async function safeFetch(url,asText=false){
   try{const r=await fetch(url,{signal:AbortSignal.timeout(5000)});return asText?await r.text():await r.json()}catch(e){return null}
 }
 
-async function fetchGoldPrice(){
-  let gp=null;
-  try{
-    const t=await safeFetch('https://hq.sinajs.cn/list=hf_XAU,fx_susdcny',true);
-    if(t){
-      const lines=t.split('\n');
-      const au=lines.find(l=>l.includes('hf_XAU'))?.split('"')[1]?.split(',');
-      const fx=lines.find(l=>l.includes('fx_susdcny'))?.split('"')[1]?.split(',');
-      if(au&&fx&&parseFloat(au[0])>0){
-        const usd=parseFloat(au[0]),cnyRate=parseFloat(fx[1]),cnyPrice=(usd*cnyRate/31.1035).toFixed(2);
-        gp={price:cnyPrice,buyback:(cnyPrice*0.997).toFixed(2),sell:(cnyPrice*1.003).toFixed(2),updatedAt:new Date().toLocaleString('zh-CN'),source:'新浪财经·国际现货黄金'};
-      }
-    }
-  }catch(e){}
-
-  if(gp){D.goldData=D.goldData||{};D.goldData.goldPrice=gp;save();goldStatus='在线';updateGoldCard(gp)}
-  else{goldStatus='离线·缓存';const cached=D.goldData?.goldPrice;if(cached)updateGoldCard(cached)}
-}
-
-async function aiFetchGold(){
-  if(!D.settings.aiKey){toast('请先配置 API Key');return}
-  toast('AI获取金价中...');
-  const r=await aiCall('返回当前国际现货黄金价格（美元/盎司）和美元兑人民币汇率。只输出两个数字，用逗号分隔。');
-  if(r){const p=r.match(/([\d.]+)\s*[,，]\s*([\d.]+)/);if(p){const usd=parseFloat(p[1]),cnyRate=parseFloat(p[2]),cnyPrice=(usd*cnyRate/31.1035).toFixed(2);
-    const gp={price:cnyPrice,buyback:(cnyPrice*0.997).toFixed(2),sell:(cnyPrice*1.003).toFixed(2),updatedAt:'AI查询·'+new Date().toLocaleString('zh-CN'),source:'AI实时查询'};
-    D.goldData=D.goldData||{};D.goldData.goldPrice=gp;save();goldStatus='在线';updateGoldCard(gp);toast('金价已更新');return;
-  }}toast('AI获取失败');
-}
-
-async function aiFetchStocks(){
-  if(!D.settings.aiKey){toast('请先配置 API Key');return}
-  toast('AI获取股市数据...');
-  const r=await aiCall('返回A股五大指数当前点位和涨跌幅：上证指数、深证成指、创业板指、科创50、沪深300。每行一个，格式：名称,点位,涨跌幅%。只输出5行数据。');
-  if(r){
-    const sp=[];const map={上证:'上证指数',深证:'深证成指',深证成:'深证成指',创业:'创业板指',科创:'科创50',沪深:'沪深300'};
-    r.split('\n').forEach(line=>{
-      const parts=line.split(/[,，\s]+/);const name=parts[0];const price=parts[1];const change=parts[2];
-      if(name&&price){const fullName=Object.entries(map).find(([k])=>name.includes(k))?.[1]||name;
-        sp.push({name:fullName,price,change:change||'--',up:(change||'').startsWith('+')});
-      }
-    });
-    if(sp.length>0){D.goldData=D.goldData||{};D.goldData.stockPrices=sp;save();stockStatus='在线';updateStockCard(sp);toast('股市数据已更新');return}
-  }toast('AI获取失败');
+async function refreshAllMarketData(force){
+  const gd=D.goldData||{};const gv=gd.goldPrice,sv=gd.stockPrices;
+  if(!force&&gv?.ts&&(Date.now()-gv.ts)<300000&&sv?.length>0){goldStatus='在线';stockStatus='在线';updateGoldCard(gv);updateStockCard(sv);return}
+  if(!D.settings.aiKey){goldStatus='离线·缓存';stockStatus='离线·快照';updateGoldCard(gv);updateStockCard(null);return}
+  goldStatus='加载中';stockStatus='加载中';
+  const prompt='返回当前市场数据，严格JSON格式：{"gold":{"price":"国内金价元/克","buyback":"回购价元/克","sell":"销售价元/克"},"stocks":[{"name":"上证指数","price":"点位","change":"涨跌幅"},{"name":"深证成指","price":"点位","change":"涨跌幅"},{"name":"创业板指","price":"点位","change":"涨跌幅"},{"name":"科创50","price":"点位","change":"涨跌幅"},{"name":"沪深300","price":"点位","change":"涨跌幅"}],"volume":"两市成交额","upCount":"上涨家数"}。不要markdown。';
+  const r=await aiCall(prompt);if(!r){goldStatus='离线·缓存';stockStatus='离线·快照';updateGoldCard(gv);updateStockCard(null);return}
+  const d=parseJSONObj(r);
+  if(d&&d.gold){const ts=Date.now();D.goldData=D.goldData||{};
+    D.goldData.goldPrice={price:d.gold.price,buyback:d.gold.buyback,sell:d.gold.sell,updatedAt:new Date(ts).toLocaleString('zh-CN'),source:'AI实时查询',ts};
+    if(d.stocks)D.goldData.stockPrices=d.stocks.map(s=>({name:s.name,price:s.price,change:s.change||'--',up:(s.change||'').startsWith('+')}));
+    const rd={...D.reviewData||{},volume:d.volume||'--',upCount:d.upCount||'--',downCount:'--',limitUp:'--',limitDown:'--',date:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),indices:D.goldData.stockPrices||[],autoFetched:true};
+    D.reviewData=rd;
+    save();goldStatus='在线';stockStatus='在线';
+    updateGoldCard(D.goldData.goldPrice);updateStockCard(D.goldData.stockPrices||[]);
+    if(cp==='review')render('review');return;
+  }
+  goldStatus='离线·缓存';stockStatus='离线·快照';updateGoldCard(gv);updateStockCard(null);
 }
 
 function updateGoldCard(gp){
   const el=document.getElementById('card-gold');if(!el||cp!=='gold')return;
-  el.outerHTML=cardGold(gp||{price:'--',buyback:'--',sell:'--',updatedAt:'部署后自动获取',source:'东方财富·上金所'});
+  el.outerHTML=cardGold(gp||{price:'--',buyback:'--',sell:'--',updatedAt:'--',source:'AI实时查询'});
 }
-
-async function fetchStockPrices(){
-  try{
-    const t=await safeFetch('https://qt.gtimg.cn/q=sh000001,sz399001,sz399006,sh000688,sh000300',true);
-    if(t){
-      const sp=[];const map={sh000001:'上证指数',sz399001:'深证成指',sz399006:'创业板指',sh000688:'科创50',sh000300:'沪深300'};
-      t.split('\n').filter(l=>l.startsWith('v_')).forEach(l=>{
-        const parts=l.split('~');const code=parts[0].replace('v_','').replace('sh','sh').replace('sz','sz');
-        const name=map[code];if(!name)return;
-        const price=parseFloat(parts[3]),changePct=parseFloat(parts[32]);
-        sp.push({name,price:isNaN(price)?'--':price.toFixed(2),change:isNaN(changePct)?'--':(changePct>0?'+':'')+changePct.toFixed(2)+'%',up:changePct>0});
-      });
-      if(sp.length>0){D.goldData=D.goldData||{};D.goldData.stockPrices=sp;save();stockStatus='在线';updateStockCard(sp);return}
-    }
-  }catch(e){}
-  stockStatus='离线·快照';updateStockCard(null);
-}
-
 function updateStockCard(sp){
   const el=document.getElementById('card-stocks');if(!el||cp!=='gold')return;
   el.outerHTML=cardStocks(sp||D.goldData?.stockPrices||[]);
-}
-
-async function fetchMarketOverview(){
-  try{
-    const t=await safeFetch('https://qt.gtimg.cn/q=sh000001',true);
-    if(t){
-      const parts=t.split('~');
-      const volume=parseFloat(parts[6]);const amount=parseFloat(parts[37]);
-      const volStr=!isNaN(volume)?(volume/1e8).toFixed(0)+'亿手':'--';
-      const amtStr=!isNaN(amount)?(amount/1e8).toFixed(2)+'万亿':'--';
-      const upCount=parseInt(parts[15]);const downCount=parseInt(parts[16]);
-      const rd={
-        date:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),
-        volume:amtStr+' (成交'+volStr+')',
-        upCount:!isNaN(upCount)?String(upCount)+'+':'--',
-        downCount:!isNaN(downCount)?String(downCount)+'+':'--',
-        limitUp:parts[45]||'--',limitDown:parts[46]||'--'
-      };
-      const sp=D.goldData?.stockPrices||[];
-      if(sp.length>0)rd.indices=sp;
-      D.reviewData=D.reviewData||{};D.reviewData={...D.reviewData,...rd,autoFetched:true};save();
-      if(cp==='review')render('review');
-    }
-  }catch(e){}
-}
-
-function updateReviewCard(rd){
-  const el=document.getElementById('card-review-stock');if(!el||cp!=='review')return;
-  const indices=rd.indices||D.goldData?.stockPrices||[{name:'上证指数',price:'--',change:'--',up:null},{name:'深证成指',price:'--',change:'--',up:null},{name:'创业板指',price:'--',change:'--',up:null},{name:'科创50',price:'--',change:'--',up:null},{name:'沪深300',price:'--',change:'--',up:null}];
-  el.outerHTML=cardAStock(indices,rd.date||new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),rd);
 }
 
 async function genGoldAnalysis(){
@@ -1103,8 +1026,6 @@ async function genGoldAnalysis(){
 }
 
 // ═══════════════ PAGE: 市场复盘 ═══════════════
-let reviewTimer=null;
-
 function pgReview(){
   const rd=D.reviewData||{};
   const sp=D.goldData?.stockPrices||[];
@@ -1114,9 +1035,7 @@ function pgReview(){
     else{indices=[{name:'上证指数',price:'--',change:'--',up:null},{name:'深证成指',price:'--',change:'--',up:null},{name:'创业板指',price:'--',change:'--',up:null},{name:'科创50',price:'--',change:'--',up:null},{name:'沪深300',price:'--',change:'--',up:null}]}
   }
   const dateStr=rd.date||new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'});
-  if(cp==='review'&&!reviewTimer){fetchStockPrices();fetchMarketOverview();reviewTimer=setInterval(()=>{fetchStockPrices();fetchMarketOverview()},60000)}
-
-  return '<div class="pg-hd"><div><div class="page-title">市场复盘</div><div class="pg-sub">A股收盘数据 · 市场宽度 · 板块资金 '+helpBtn('指数、成交额、涨跌家数自动从东方财富获取（部署后生效）。板块资金需手动填入。')+'</div></div><button class="btn btn-s btn-sm" onclick="editReviewData()">手动更新</button></div>'+
+  return '<div class="pg-hd"><div><div class="page-title">市场复盘</div><div class="pg-sub">A股收盘数据 · 市场宽度 · 板块资金 '+helpBtn('指数、成交额、涨跌家数由AI自动获取，每5分钟刷新。板块资金需手动填入。')+'</div></div><button class="btn btn-s btn-sm" onclick="editReviewData()">手动更新</button></div>'+
 
   cardAStock(indices,dateStr,rd)+
   cardBreadth(rd)+
