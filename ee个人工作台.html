@@ -1061,7 +1061,7 @@ function pgReview(){
     else{indices=[{name:'上证指数',price:'--',change:'--',up:null},{name:'深证成指',price:'--',change:'--',up:null},{name:'创业板指',price:'--',change:'--',up:null},{name:'科创50',price:'--',change:'--',up:null},{name:'沪深300',price:'--',change:'--',up:null}]}
   }
   const dateStr=rd.date||new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'});
-  return '<div class="pg-hd"><div><div class="page-title">市场复盘</div><div class="pg-sub">A股收盘数据 · 市场宽度 · 板块资金 '+helpBtn('指数、成交额、涨跌家数由AI自动获取，每5分钟刷新。板块资金需手动填入。')+'</div></div><button class="btn btn-s btn-sm" onclick="editReviewData()">手动更新</button></div>'+
+  return '<div class="pg-hd"><div><div class="page-title">市场复盘</div><div class="pg-sub">A股实时数据 · AI智能总结 '+helpBtn('指数数据自动同步黄金财经的实时数据。点AI复盘分析即可生成当日市场总结。')+'</div></div></div>'+
 
   cardAStock(indices,dateStr,rd)+
   cardBreadth(rd)+
@@ -1070,8 +1070,8 @@ function pgReview(){
 
 // ── Card 1: A股收盘数据 ──
 function cardAStock(indices,dateStr,rd){
-  const volume=rd.volume||'2.30万亿(放量2708亿)';
-  const rise=rd.riseCount||'超4200只个股飘红';
+  const volume=rd.volume||'--';
+  const rise=rd.riseCount||'';
   return '<div class="card" style="margin-bottom:14px"><div class="card-hd"><div class="card-title">A股收盘数据（'+dateStr+'）</div></div>'+
   indices.map(s=>'<div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px"><span style="flex:1">'+esc(s.name)+'</span><span style="font-weight:600;margin-right:12px">'+esc(s.price)+'</span><span style="color:'+(s.up?'var(--warn)':'var(--green)')+'">'+esc(s.change)+'</span></div>').join('')+
   '<div style="display:flex;justify-content:space-between;padding:10px 0;font-size:13px"><span>两市成交额</span><span style="font-weight:600">'+esc(volume)+'</span></div>'+
@@ -1080,7 +1080,7 @@ function cardAStock(indices,dateStr,rd){
 
 // ── Card 2: 市场宽度 ──
 function cardBreadth(rd){
-  const up=rd.upCount||'4200+',down=rd.downCount||'800+',limitUp=rd.limitUp||'98',limitDown=rd.limitDown||'3';
+  const up=rd.upCount||'--',down=rd.downCount||'--',limitUp=rd.limitUp||'--',limitDown=rd.limitDown||'--';
   return '<div class="card" style="margin-bottom:14px"><div class="card-hd"><div class="card-title">市场宽度</div></div>'+
   '<div class="g2" style="margin-bottom:12px">'+
   '<div class="stat-card"><div class="stat-val" style="color:var(--warn)">'+esc(up)+'</div><div class="stat-label">上涨家数</div></div>'+
@@ -1115,8 +1115,8 @@ function editReviewData(){
 
 async function genReviewAI(){
   if(!D.settings.aiKey){toast('请先配置 API Key');return}
-  const rd=D.reviewData||{};
-  const prompt='今日A股市场复盘数据：成交额'+(rd.volume||'')+'，上涨'+(rd.riseCount||'')+'，涨停'+(rd.limitUp||'')+'家，跌停'+(rd.limitDown||'')+'家。请输出：\n1. 今日市场总体判断\n2. 资金动向解读\n3. 明日关注要点\n\n控制在150字以内。注明不构成投资建议。';
+  const sp=(D.goldData?.stockPrices||[]).map(function(s){return s.name+' '+s.price+' '+s.change}).join('；');
+  const prompt='今日A股市场数据：'+sp+'。请输出：\n1. 今日市场总体判断\n2. 资金动向解读\n3. 明日关注要点\n\n控制在150字以内。注明不构成投资建议。';
   toast('AI 分析中...');
   const r=await aiCall(prompt);
   if(r){if(!D.reviewData)D.reviewData={};D.reviewData.aiReview=r;save();render('review');toast('复盘分析已生成')}
