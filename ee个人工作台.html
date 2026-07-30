@@ -827,28 +827,16 @@ async function genMealPlan(){
   toast('AI 正在生成...');
   const r=await aiCall(prompt);
   if(!r){return}
-  try{
-    const jsonStr=r.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
-    const meal=JSON.parse(jsonStr);
-    const plan={id:gid(),date:td,meals:{
-      breakfast:{name:meal.breakfast.name,cal:meal.breakfast.cal,ingredients:meal.breakfast.ingredients,steps:meal.breakfast.steps,videoLink:'',searchKeyword:meal.breakfast.searchKeyword||''},
-      lunch:{name:meal.lunch.name,cal:meal.lunch.cal,ingredients:meal.lunch.ingredients,steps:meal.lunch.steps,videoLink:'',searchKeyword:meal.lunch.searchKeyword||''},
-      dinner:{name:meal.dinner.name,cal:meal.dinner.cal,ingredients:meal.dinner.ingredients,steps:meal.dinner.steps,videoLink:'',searchKeyword:meal.dinner.searchKeyword||''}
-    },totalCal:meal.totalCal||'?',generatedAt:Date.now()};
-    const idx=D.mealPlans.findIndex(x=>x.date===td);
-    if(idx>=0)D.mealPlans[idx]=plan;else D.mealPlans.unshift(plan);
-    save();render('diet');toast('三餐方案已生成');
-  }catch(e){
-    toast('AI返回格式异常，请重试');
-    const plan={id:gid(),date:td,meals:{
-      breakfast:{name:'解析失败',cal:'?',ingredients:'',steps:r.slice(0,300),videoLink:'',searchKeyword:''},
-      lunch:{name:'解析失败',cal:'?',ingredients:'',steps:'',videoLink:'',searchKeyword:''},
-      dinner:{name:'解析失败',cal:'?',ingredients:'',steps:'',videoLink:'',searchKeyword:''}
-    },totalCal:'?',generatedAt:Date.now()};
-    const idx=D.mealPlans.findIndex(x=>x.date===td);
-    if(idx>=0)D.mealPlans[idx]=plan;else D.mealPlans.unshift(plan);
-    save();render('diet');
-  }
+  const meal=parseJSONObj(r);
+  if(!meal||!meal.breakfast){toast('AI返回格式异常，请重试');return}
+  const plan={id:gid(),date:td,meals:{
+    breakfast:{name:meal.breakfast.name,cal:meal.breakfast.cal,ingredients:meal.breakfast.ingredients,steps:meal.breakfast.steps,videoLink:'',searchKeyword:meal.breakfast.searchKeyword||''},
+    lunch:{name:meal.lunch.name,cal:meal.lunch.cal,ingredients:meal.lunch.ingredients,steps:meal.lunch.steps,videoLink:'',searchKeyword:meal.lunch.searchKeyword||''},
+    dinner:{name:meal.dinner.name,cal:meal.dinner.cal,ingredients:meal.dinner.ingredients,steps:meal.dinner.steps,videoLink:'',searchKeyword:meal.dinner.searchKeyword||''}
+  },totalCal:meal.totalCal||'?',generatedAt:Date.now()};
+  const idx=D.mealPlans.findIndex(x=>x.date===td);
+  if(idx>=0)D.mealPlans[idx]=plan;else D.mealPlans.unshift(plan);
+  save();render('diet');toast('三餐方案已生成');
 }
 
 // ═══════════════ PAGE: 护肤打卡 ═══════════════
@@ -1346,15 +1334,42 @@ async function genStudyQuestions(){
   const prompt='你是中级经济师考试培训老师。请生成10道单选题，覆盖《经济基础知识》核心考点（经济学基础、财政、货币金融、统计、会计、法律）。每道题格式：{"question":"题目","options":["A.选项A","B.选项B","C.选项C","D.选项D"],"answer":"A.选项A","explanation":"解析说明","knowledgePoint":"知识点名称"}。输出10个对象的JSON数组，不要markdown代码块。';
   const r=await aiCall(prompt);
   if(!r)return;
+  let qs=tryParseJSON(r);
+  if(!qs){
+    const prompt2='上一轮输出的内容不是合法JSON数组。请严格输出纯JSON数组，不要任何额外文字，不要markdown标记。格式：[{"question":"...","options":["A...","B...","C...","D..."],"answer":"A...","explanation":"...","knowledgePoint":"..."}]';
+    const r2=await aiCall(prompt2);
+    if(!r2)return;
+    qs=tryParseJSON(r2);
+  }
+  if(!qs){toast('AI返回格式异常，请重试');return}
+  qs=qs.slice(0,10).map(q=>({...q,userAnswer:'',options:q.options||['A','B','C','D']}));
+  const td=nowDate();const idx=D.studyQuestions.findIndex(x=>x.date===td);
+  const entry={id:gid(),date:td,questions:qs};
+  if(idx>=0)D.studyQuestions[idx]=entry;else D.studyQuestions.unshift(entry);
+  save();render('study');toast('题目已生成');
+}
+
+function tryParseJSON(str){
   try{
-    const json=r.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
-    let qs=JSON.parse(json);if(!Array.isArray(qs))qs=[qs];
-    qs=qs.slice(0,10).map(q=>({...q,userAnswer:''}));
-    const td=nowDate();const idx=D.studyQuestions.findIndex(x=>x.date===td);
-    const entry={id:gid(),date:td,questions:qs};
-    if(idx>=0)D.studyQuestions[idx]=entry;else D.studyQuestions.unshift(entry);
-    save();render('study');toast('题目已生成');
-  }catch(e){toast('AI返回格式异常，请重试')}
+    let s=str.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
+    const arrMatch=s.match(/\[[\s\S]*\]/);
+    if(arrMatch)s=arrMatch[0];
+    const objMatch=s.match(/\{[\s\S]*\}/);
+    if(!arrMatch&&objMatch){s='['+objMatch[0]+']'}
+    s=s.replace(/，/g,',').replace(/"/g,'"').replace(/"/g,'"').replace(/'/g,'"');
+    const r=JSON.parse(s);
+    return Array.isArray(r)?r:[r];
+  }catch(e){return null}
+}
+
+function parseJSONObj(str){
+  try{
+    let s=str.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
+    const m=s.match(/\{[\s\S]*\}/);
+    if(m)s=m[0];
+    s=s.replace(/，/g,',').replace(/"/g,'"').replace(/"/g,'"').replace(/'/g,'"');
+    return JSON.parse(s);
+  }catch(e){return null}
 }
 
 // ═══════════════ PAGE: 我的空间 ═══════════════
