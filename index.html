@@ -932,7 +932,7 @@ function pgGold(){
 function updateTimers(){
   clearInterval(goldTimer);clearInterval(stockTimer);
   refreshAllMarketData(false);
-  goldTimer=setInterval(()=>refreshAllMarketData(false),300000);
+  goldTimer=setInterval(()=>refreshAllMarketData(false),5000);
 }
 
 // ── Card 1: 实时金价 ──
@@ -989,21 +989,20 @@ async function safeFetch(url,asText=false){
 async function refreshAllMarketData(force){
   const gd=D.goldData||{};const gv=gd.goldPrice,sv=gd.stockPrices;
   if(!force&&gv?.ts&&(Date.now()-gv.ts)<300000&&sv?.length>0){goldStatus='在线';stockStatus='在线';updateGoldCard(gv);updateStockCard(sv);return}
-  if(!D.settings.aiKey){goldStatus='离线·缓存';stockStatus='离线·快照';updateGoldCard(gv);updateStockCard(null);return}
-  goldStatus='加载中';stockStatus='加载中';
-  const prompt='返回当前市场数据，严格JSON格式：{"gold":{"price":"国内金价元/克","buyback":"回购价元/克","sell":"销售价元/克"},"stocks":[{"name":"上证指数","price":"点位","change":"涨跌幅"},{"name":"深证成指","price":"点位","change":"涨跌幅"},{"name":"创业板指","price":"点位","change":"涨跌幅"},{"name":"科创50","price":"点位","change":"涨跌幅"},{"name":"沪深300","price":"点位","change":"涨跌幅"}],"volume":"两市成交额","upCount":"上涨家数"}。不要markdown。';
-  const r=await aiCall(prompt);if(!r){goldStatus='离线·缓存';stockStatus='离线·快照';updateGoldCard(gv);updateStockCard(null);return}
-  const d=parseJSONObj(r);
-  if(d&&d.gold){const ts=Date.now();D.goldData=D.goldData||{};
-    D.goldData.goldPrice={price:d.gold.price,buyback:d.gold.buyback,sell:d.gold.sell,updatedAt:new Date(ts).toLocaleString('zh-CN'),source:'AI实时查询',ts};
-    if(d.stocks)D.goldData.stockPrices=d.stocks.map(s=>({name:s.name,price:s.price,change:s.change||'--',up:(s.change||'').startsWith('+')}));
-    const rd={...D.reviewData||{},volume:d.volume||'--',upCount:d.upCount||'--',downCount:'--',limitUp:'--',limitDown:'--',date:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),indices:D.goldData.stockPrices||[],autoFetched:true};
-    D.reviewData=rd;
-    save();goldStatus='在线';stockStatus='在线';
-    updateGoldCard(D.goldData.goldPrice);updateStockCard(D.goldData.stockPrices||[]);
-    if(cp==='review')render('review');return;
-  }
-  goldStatus='离线·缓存';stockStatus='离线·快照';updateGoldCard(gv);updateStockCard(null);
+  try{
+    const t=await fetch('https://hq.sinajs.cn/list=hf_XAU,fx_susdcny,s_sh000001,s_sz399001,s_sz399006,s_sh000688,s_sh000300',{signal:AbortSignal.timeout(5000)});
+    if(t.ok){
+      const raw=await t.text();const ts=Date.now();D.goldData=D.goldData||{};let gp=null,sp=[];
+      const auMatch=raw.match(/hf_XAU="([^"]+)"/),fxMatch=raw.match(/fx_susdcny="([^"]+)"/);
+      if(auMatch&&fxMatch){const au=auMatch[1].split(','),fx=fxMatch[1].split(',');const usd=parseFloat(au[0]),cnyRate=parseFloat(fx[1]||'6.76');if(usd>0){const cnyPrice=(usd*cnyRate/31.1035).toFixed(2);gp={price:cnyPrice,buyback:(cnyPrice*0.997).toFixed(2),sell:(cnyPrice*1.003).toFixed(2),updatedAt:new Date(ts).toLocaleString('zh-CN'),source:'新浪财经',ts};}}
+      const idxMap={sh000001:'上证指数',sz399001:'深证成指',sz399006:'创业板指',sh000688:'科创50',sh000300:'沪深300'};
+      Object.entries(idxMap).forEach(([code,name])=>{const m=raw.match(new RegExp(code+'="([^"]+)"'));if(m){const p=m[1].split(','),price=parseFloat(p[1]),prev=parseFloat(p[2]);sp.push({name,price:isNaN(price)?'--':price.toFixed(2),change:isNaN(price)||isNaN(prev)?'--':(((price-prev)/prev)*100).toFixed(2)+'%',up:price>=prev});}});
+      if(gp){D.goldData.goldPrice=gp;goldStatus='在线';updateGoldCard(gp)}else{goldStatus='离线·缓存';if(gv)updateGoldCard(gv)}
+      if(sp.length>0){D.goldData.stockPrices=sp;stockStatus='在线';updateStockCard(sp);D.reviewData={...D.reviewData||{},volume:'--',upCount:'--',downCount:'--',limitUp:'--',limitDown:'--',date:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),indices:sp,autoFetched:true};save()}else{stockStatus='离线·快照';updateStockCard(null)}
+      return;
+    }
+  }catch(e){}
+  goldStatus='离线·缓存';stockStatus='离线·快照';if(gv)updateGoldCard(gv);updateStockCard(null);
 }
 
 function updateGoldCard(gp){
