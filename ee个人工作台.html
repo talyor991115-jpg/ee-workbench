@@ -996,22 +996,39 @@ function cardAnalysis(analysis){
 
 // ── Fetch functions ──
 async function fetchGoldPrice(){
-  try{
-    const resp=await fetch('https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=113.AU9999&fields=f2,f3,f12,f14,f15,f16,f17',{signal:AbortSignal.timeout(2000)});
-    if(resp.ok){const d=await resp.json();if(d.data?.diff?.[0]){
-      const x=d.data.diff[0];const gp={price:x.f2?x.f2.toFixed(2):'--',buyback:(x.f2?x.f2*0.997:0).toFixed(2),sell:(x.f2?x.f2*1.003:0).toFixed(2),updatedAt:new Date().toLocaleString('zh-CN'),source:'东方财富·上金所AU9999'};
-      D.goldData=D.goldData||{};D.goldData.goldPrice=gp;save();goldStatus='在线';updateGoldCard(gp);return;
-    }}
-  }catch(e){}
-  try{
-    const resp=await fetch('https://vapi.danran0.cc/api/gold',{signal:AbortSignal.timeout(2000)});
-    if(resp.ok){const d=await resp.json();
-      const gp={price:d.price||d.data?.price||'--',buyback:d.buyback||d.data?.buyback||'--',sell:d.sell||d.data?.sell||'--',updatedAt:new Date().toLocaleString('zh-CN'),source:'融通金实时报价'};
-      D.goldData=D.goldData||{};D.goldData.goldPrice=gp;save();goldStatus='在线';updateGoldCard(gp);return;
-    }
-  }catch(e){}
-  goldStatus='离线·缓存';
-  if(gp)updateGoldCard(gp);
+  const doFetch=async(url,parser)=>{
+    try{
+      const resp=await fetch(url,{signal:AbortSignal.timeout(3000)});
+      if(!resp.ok)return null;
+      const d=await resp.json();
+      return parser(d);
+    }catch(e){return null}
+  };
+
+  let gp=await doFetch('https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=118.AU9999&fields=f2,f3,f12,f14',d=>{
+    if(!d.data?.diff?.[0])return null;
+    const x=d.data.diff[0];if(!x.f2)return null;
+    return {price:x.f2.toFixed(2),buyback:(x.f2*0.997).toFixed(2),sell:(x.f2*1.003).toFixed(2),updatedAt:new Date().toLocaleString('zh-CN'),source:'东方财富·上金所AU9999'};
+  });
+
+  if(!gp){gp=await doFetch('https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=118.AU9999&fields=f2,f3',d=>{
+    if(!d.data?.diff?.[0])return null;
+    const x=d.data.diff[0];if(!x.f2)return null;
+    return {price:x.f2.toFixed(2),buyback:(x.f2*0.997).toFixed(2),sell:(x.f2*1.003).toFixed(2),updatedAt:new Date().toLocaleString('zh-CN'),source:'东方财富·上金所AU9999'};
+  });}
+
+  if(!gp){gp=await doFetch('https://api.gold-api.com/price/XAU',d=>{
+    if(!d.price)return null;
+    const cny=d.price*7.25;return {price:cny.toFixed(2),buyback:(cny*0.997).toFixed(2),sell:(cny*1.003).toFixed(2),updatedAt:new Date().toLocaleString('zh-CN'),source:'国际金价·gold-api.com'};
+  });}
+
+  if(!gp){gp=await doFetch('https://vapi.danran0.cc/api/gold',d=>{
+    const p=d.price||d.data?.price;if(!p)return null;
+    return {price:p,buyback:d.buyback||d.data?.buyback||p, sell:d.sell||d.data?.sell||p,updatedAt:new Date().toLocaleString('zh-CN'),source:'融通金'};
+  });}
+
+  if(gp){D.goldData=D.goldData||{};D.goldData.goldPrice=gp;save();goldStatus='在线';updateGoldCard(gp)}
+  else{goldStatus='离线·缓存';const cached=D.goldData?.goldPrice;if(cached)updateGoldCard(cached)}
 }
 
 function updateGoldCard(gp){
