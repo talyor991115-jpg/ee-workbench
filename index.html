@@ -959,7 +959,7 @@ function cardGold(gp){
   return '<div class="card" style="margin-bottom:14px" id="card-gold"><div class="card-hd"><div class="card-title">实时金价（自动刷新）</div><span style="font-size:11px;color:'+(isOnline?'var(--green)':'var(--amber)')+'">'+(isOnline?'在线':'离线·缓存')+'</span></div>'+
   '<div style="text-align:center;padding:16px 0"><div style="font-size:42px;font-weight:700;color:#B8860B">¥'+esc(price)+'/克</div><div style="font-size:14px;color:var(--t2);margin-top:4px">持平</div></div>'+
   '<div style="display:flex;justify-content:space-around;padding:12px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:13px"><div>融通金回购价<span style="font-weight:600;display:block">¥'+esc(buyback)+'</span></div><div>销售<span style="font-weight:600;display:block">¥'+esc(sell)+'</span></div><div>更新<span style="font-weight:600;display:block">'+esc(updated)+'</span></div></div>'+
-  '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;font-size:11px;color:var(--t3)"><span>本地每1秒刷新 · '+now+'</span><button class="btn btn-xs btn-s" onclick="fetchGoldPrice()">刷新</button></div>'+
+  '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;font-size:11px;color:var(--t3)"><span>本地每1秒刷新 · '+now+'</span><div style="display:flex;gap:4px"><button class="btn btn-xs btn-s" onclick="fetchGoldPrice()">刷新</button>'+(isOnline?'':'<button class="btn btn-xs btn-p" onclick="aiFetchGold()">AI获取</button>')+'</div></div>'+
   '<div style="font-size:10px;color:var(--t3);margin-top:4px">来源：融通金实时报价（vapi.danran0.cc）· 每1秒自动刷新；断网时显示最近缓存</div></div>';
 }
 
@@ -975,7 +975,7 @@ function cardStocks(sp){
   const isOnline=stockStatus==='在线';
   return '<div class="card" style="margin-bottom:14px" id="card-stocks"><div class="card-hd"><div class="card-title">实时股市（A股主要指数·自动刷新）</div><span style="font-size:11px;color:'+(isOnline?'var(--green)':'var(--amber)')+'">'+(isOnline?'在线':'离线·快照')+'</span></div>'+
   stocks.map(s=>'<div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px"><span style="flex:1">'+esc(s.name)+'</span><span style="font-weight:600;margin-right:12px">'+esc(s.price)+'</span><span style="color:'+(s.up===true?'var(--warn)':s.up===false?'var(--green)':'var(--t3)')+'">'+esc(s.change)+'</span></div>').join('')+
-  '<div style="font-size:10px;color:var(--t3);margin-top:8px">来源：东方财富实时行情接口 · 每60秒自动刷新；断网/接口受限时显示今日快照</div></div>';
+  '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px"><div style="font-size:10px;color:var(--t3)">来源：腾讯财经 · 每60秒自动刷新；断网时显示快照</div>'+(isOnline?'':'<button class="btn btn-xs btn-p" onclick="aiFetchStocks()">AI获取</button>')+'</div></div>';
 }
 
 // ── Card 3: 今日黄金核心行情 ──
@@ -999,20 +999,48 @@ async function safeFetch(url,asText=false){
 }
 
 async function fetchGoldPrice(){
+  let gp=null;
   try{
     const t=await safeFetch('https://hq.sinajs.cn/list=hf_XAU,fx_susdcny',true);
     if(t){
       const lines=t.split('\n');
       const au=lines.find(l=>l.includes('hf_XAU'))?.split('"')[1]?.split(',');
       const fx=lines.find(l=>l.includes('fx_susdcny'))?.split('"')[1]?.split(',');
-      if(au&&fx){
+      if(au&&fx&&parseFloat(au[0])>0){
         const usd=parseFloat(au[0]),cnyRate=parseFloat(fx[1]),cnyPrice=(usd*cnyRate/31.1035).toFixed(2);
-        const gp={price:cnyPrice,buyback:(cnyPrice*0.997).toFixed(2),sell:(cnyPrice*1.003).toFixed(2),updatedAt:new Date().toLocaleString('zh-CN'),source:'新浪财经·国际现货黄金'};
-        D.goldData=D.goldData||{};D.goldData.goldPrice=gp;save();goldStatus='在线';updateGoldCard(gp);return;
+        gp={price:cnyPrice,buyback:(cnyPrice*0.997).toFixed(2),sell:(cnyPrice*1.003).toFixed(2),updatedAt:new Date().toLocaleString('zh-CN'),source:'新浪财经·国际现货黄金'};
       }
     }
   }catch(e){}
-  goldStatus='离线·缓存';const cached=D.goldData?.goldPrice;if(cached)updateGoldCard(cached);
+
+  if(gp){D.goldData=D.goldData||{};D.goldData.goldPrice=gp;save();goldStatus='在线';updateGoldCard(gp)}
+  else{goldStatus='离线·缓存';const cached=D.goldData?.goldPrice;if(cached)updateGoldCard(cached)}
+}
+
+async function aiFetchGold(){
+  if(!D.settings.aiKey){toast('请先配置 API Key');return}
+  toast('AI获取金价中...');
+  const r=await aiCall('返回当前国际现货黄金价格（美元/盎司）和美元兑人民币汇率。只输出两个数字，用逗号分隔。');
+  if(r){const p=r.match(/([\d.]+)\s*[,，]\s*([\d.]+)/);if(p){const usd=parseFloat(p[1]),cnyRate=parseFloat(p[2]),cnyPrice=(usd*cnyRate/31.1035).toFixed(2);
+    const gp={price:cnyPrice,buyback:(cnyPrice*0.997).toFixed(2),sell:(cnyPrice*1.003).toFixed(2),updatedAt:'AI查询·'+new Date().toLocaleString('zh-CN'),source:'AI实时查询'};
+    D.goldData=D.goldData||{};D.goldData.goldPrice=gp;save();goldStatus='在线';updateGoldCard(gp);toast('金价已更新');return;
+  }}toast('AI获取失败');
+}
+
+async function aiFetchStocks(){
+  if(!D.settings.aiKey){toast('请先配置 API Key');return}
+  toast('AI获取股市数据...');
+  const r=await aiCall('返回A股五大指数当前点位和涨跌幅：上证指数、深证成指、创业板指、科创50、沪深300。每行一个，格式：名称,点位,涨跌幅%。只输出5行数据。');
+  if(r){
+    const sp=[];const map={上证:'上证指数',深证:'深证成指',深证成:'深证成指',创业:'创业板指',科创:'科创50',沪深:'沪深300'};
+    r.split('\n').forEach(line=>{
+      const parts=line.split(/[,，\s]+/);const name=parts[0];const price=parts[1];const change=parts[2];
+      if(name&&price){const fullName=Object.entries(map).find(([k])=>name.includes(k))?.[1]||name;
+        sp.push({name:fullName,price,change:change||'--',up:(change||'').startsWith('+')});
+      }
+    });
+    if(sp.length>0){D.goldData=D.goldData||{};D.goldData.stockPrices=sp;save();stockStatus='在线';updateStockCard(sp);toast('股市数据已更新');return}
+  }toast('AI获取失败');
 }
 
 function updateGoldCard(gp){
