@@ -997,21 +997,19 @@ async function refreshAllMarketData(force){
   const gd=D.goldData||{};const gv=gd.goldPrice,sv=gd.stockPrices;
   if(!force&&gv?.ts&&(Date.now()-gv.ts)<300000&&sv?.length>0){goldStatus='在线';stockStatus='在线';updateGoldCard(gv);updateStockCard(sv);return}
 
-  const tk=D.settings.tickdbKey;
-  if(!tk){goldStatus='需Key';stockStatus='需Key';if(gv)updateGoldCard(gv);updateStockCard(null);return}
   try{
-    const resp=await fetch('https://api.tickdb.ai/v1/market/ticker?symbols=XAUUSD,000001.SS,399001.SZ,399006.SZ,000688.SS,000300.SS',{headers:{'X-API-Key':tk},signal:AbortSignal.timeout(5000)});
-    if(!resp.ok){goldStatus='离线·缓存';stockStatus='离线·快照';if(gv)updateGoldCard(gv);updateStockCard(null);return}
-    const j=await resp.json();const data=Array.isArray(j)?j:(j.data||[]);
-    const ts=Date.now();D.goldData=D.goldData||{};let gp=null,sp=[];
-    const nameMap={'000001.SS':'上证指数','399001.SZ':'深证成指','399006.SZ':'创业板指','000688.SS':'科创50','000300.SS':'沪深300'};
-    data.forEach(function(item){
-      const sym=item.symbol||item.s||'';
-      if(sym==='XAUUSD'){const p=item.price||item.last||item.p;if(!p)return;const c=6.76;const cny=(p*c/31.1035).toFixed(2);gp={price:cny,buyback:(cny*0.997).toFixed(2),sell:(cny*1.003).toFixed(2),updatedAt:new Date(ts).toLocaleString('zh-CN'),source:'TickDB',ts};}
-      else{const nm=nameMap[sym];if(!nm)return;const pr=item.price||item.last||item.p,cp=item.changePercent||item.change||item.cp;sp.push({name:nm,price:pr!=null?String(pr):'--',change:cp!=null?(cp>0?'+':'')+cp+'%':'--',up:cp>=0});}
-    });
-    if(gp){D.goldData.goldPrice=gp;goldStatus='在线';updateGoldCard(gp)}else{goldStatus='离线·缓存';if(gv)updateGoldCard(gv)}
-    if(sp.length>0){D.goldData.stockPrices=sp;stockStatus='在线';updateStockCard(sp);D.reviewData={...D.reviewData||{},date:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),indices:sp,autoFetched:true};save()}else{stockStatus='离线·快照';updateStockCard(null)}
+    const url='https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=118.AU9999,1.000001,0.399001,0.399006,1.000688,1.000300&fields=f2,f3,f4,f12,f14,f15,f16,f17,f170,f171,f43,f44';
+    const resp=await fetch(url,{signal:AbortSignal.timeout(5000)});
+    if(resp.ok){
+      const j=await resp.json();const diff=j.data?.diff||[];const ts=Date.now();D.goldData=D.goldData||{};
+      let gp=null;const sp=[];const idxMap={'1.000001':'上证指数','0.399001':'深证成指','0.399006':'创业板指','1.000688':'科创50','1.000300':'沪深300'};
+      diff.forEach(function(x){
+        const code=String(x.f12);if(code==='118'){if(x.f2){const cny=(parseFloat(x.f2)/31.1035*6.76).toFixed(2);gp={price:cny,buyback:(cny*0.997).toFixed(2),sell:(cny*1.003).toFixed(2),updatedAt:new Date(ts).toLocaleString('zh-CN'),source:'东方财富',ts};}}
+        else{const nm=idxMap[code];if(!nm)return;sp.push({name:nm,price:x.f2!=null?x.f2.toFixed(2):'--',change:x.f3!=null?(x.f3>0?'+':'')+x.f3.toFixed(2)+'%':'--',up:x.f3>0});}
+      });
+      if(gp){D.goldData.goldPrice=gp;goldStatus='在线';updateGoldCard(gp)}else{goldStatus='离线·缓存';if(gv)updateGoldCard(gv)}
+      if(sp.length>0){D.goldData.stockPrices=sp;stockStatus='在线';updateStockCard(sp);D.reviewData={...D.reviewData||{},date:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),indices:sp,autoFetched:true};save()}else{stockStatus='离线·快照';updateStockCard(null)}
+    }else{goldStatus='离线·缓存';stockStatus='离线·快照';if(gv)updateGoldCard(gv);updateStockCard(null)}
   }catch(e){goldStatus='离线·缓存';stockStatus='离线·快照';if(gv)updateGoldCard(gv);updateStockCard(null)}
 }
 
