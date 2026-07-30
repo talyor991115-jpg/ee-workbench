@@ -1359,17 +1359,22 @@ function getSpaceTab(){try{return sessionStorage.getItem('ee_space_tab')||'memo'
 function setSpaceTab(t){try{sessionStorage.setItem('ee_space_tab',t)}catch(e){}render('space')}
 
 function addSpaceNote(){
-  try{
-    const tab=getSpaceTab();
-    const labels={memo:'备忘录',reading:'读书笔记',inspiration:'灵感',shopping:'购物清单'};
-    const label=labels[tab]||'备忘录';
-    modal('新建'+label,'<div class="fg"><label class="fl">标题</label><input class="fi" id="sn-title"></div><div class="fg"><label class="fl">内容</label><textarea class="ft" id="sn-content"></textarea></div><div class="fg"><label class="fl">标签(逗号分隔)</label><input class="fi" id="sn-tags" placeholder="如：重要,待整理"></div>',()=>{
-      const t=mv('#sn-title');if(!t||!t.trim())return;
-      const tags=(mv('#sn-tags')||'').split(/[,，]/).map(s=>s.trim()).filter(Boolean);
-      D.spaceNotes.unshift({id:gid(),tab,title:t.trim(),content:mv('#sn-content')||'',tags,createdAt:Date.now(),updatedAt:Date.now(),aiSummary:''});
-      save();render('space');
-    });
-  }catch(e){toast('新建失败: '+e.message)}
+  toast('打开新建窗口...');
+  const tab=getSpaceTab();
+  const labels={memo:'备忘录',reading:'读书笔记',inspiration:'灵感',shopping:'购物清单'};
+  modal('新建'+(labels[tab]||'备忘录'),
+    '<div class="fg"><label class="fl">标题</label><input class="fi" id="sn-title" autofocus></div>'+
+    '<div class="fg"><label class="fl">内容</label><textarea class="ft" id="sn-content"></textarea></div>'+
+    '<div class="fg"><label class="fl">标签(逗号分隔)</label><input class="fi" id="sn-tags" placeholder="如：重要,待整理"></div>',
+    function(){
+      const title=document.getElementById('sn-title');if(!title||!title.value.trim())return;
+      const content=document.getElementById('sn-content');
+      const tagsEl=document.getElementById('sn-tags');
+      const tags=(tagsEl?tagsEl.value:'').split(/[,，]/).map(function(s){return s.trim()}).filter(Boolean);
+      D.spaceNotes.unshift({id:gid(),tab:tab,title:title.value.trim(),content:content?content.value:'',tags:tags,createdAt:Date.now(),updatedAt:Date.now(),aiSummary:''});
+      save();render('space');toast('已保存');
+    }
+  );
 }
 
 function editSpaceNote(id){
