@@ -994,33 +994,24 @@ function cardAnalysis(analysis){
 }
 
 // ── Fetch functions ──
-const CORS_PROXIES=['','https://corsproxy.io/?','https://proxy.cors.sh/'];
-
-async function safeFetch(url,timeout=5000){
-  for(const proxy of CORS_PROXIES){
-    try{
-      const u=proxy?proxy+encodeURIComponent(url):url;
-      const opts={signal:AbortSignal.timeout(timeout)};
-      if(proxy==='https://proxy.cors.sh/')opts.headers={'x-cors-headers':'x-all'};
-      const resp=await fetch(u,opts);
-      if(resp.ok)return await resp.json();
-    }catch(e){}
-  }
-  return null;
+async function safeFetch(url,asText=false){
+  try{const r=await fetch(url,{signal:AbortSignal.timeout(5000)});return asText?await r.text():await r.json()}catch(e){return null}
 }
 
 async function fetchGoldPrice(){
-  let d=await safeFetch('https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=118.AU9999&fields=f2,f3,f12,f14');
-  if(d&&d.data?.diff?.[0]?.f2){
-    const x=d.data.diff[0];const gp={price:x.f2.toFixed(2),buyback:(x.f2*0.997).toFixed(2),sell:(x.f2*1.003).toFixed(2),updatedAt:new Date().toLocaleString('zh-CN'),source:'东方财富·上金所AU9999'};
-    D.goldData=D.goldData||{};D.goldData.goldPrice=gp;save();goldStatus='在线';updateGoldCard(gp);return;
-  }
-
-  d=await safeFetch('https://vapi.danran0.cc/api/gold');
-  if(d){const p=d.price||d.data?.price;if(p){const gp={price:p,buyback:d.buyback||d.data?.buyback||p,sell:d.sell||d.data?.sell||p,updatedAt:new Date().toLocaleString('zh-CN'),source:'融通金'};
-    D.goldData=D.goldData||{};D.goldData.goldPrice=gp;save();goldStatus='在线';updateGoldCard(gp);return;
-  }}
-
+  try{
+    const t=await safeFetch('https://hq.sinajs.cn/list=hf_XAU,fx_susdcny',true);
+    if(t){
+      const lines=t.split('\n');
+      const au=lines.find(l=>l.includes('hf_XAU'))?.split('"')[1]?.split(',');
+      const fx=lines.find(l=>l.includes('fx_susdcny'))?.split('"')[1]?.split(',');
+      if(au&&fx){
+        const usd=parseFloat(au[0]),cnyRate=parseFloat(fx[1]),cnyPrice=(usd*cnyRate/31.1035).toFixed(2);
+        const gp={price:cnyPrice,buyback:(cnyPrice*0.997).toFixed(2),sell:(cnyPrice*1.003).toFixed(2),updatedAt:new Date().toLocaleString('zh-CN'),source:'新浪财经·国际现货黄金'};
+        D.goldData=D.goldData||{};D.goldData.goldPrice=gp;save();goldStatus='在线';updateGoldCard(gp);return;
+      }
+    }
+  }catch(e){}
   goldStatus='离线·缓存';const cached=D.goldData?.goldPrice;if(cached)updateGoldCard(cached);
 }
 
@@ -1030,11 +1021,19 @@ function updateGoldCard(gp){
 }
 
 async function fetchStockPrices(){
-  const d=await safeFetch('https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=1.000001,0.399001,0.399006,1.000688,1.000300&fields=f2,f3,f12,f14');
-  if(d&&d.data?.diff){
-    const sp=d.data.diff.map(x=>({name:x.f14,price:x.f2!=null?x.f2.toFixed(2):'--',change:x.f3!=null?(x.f3>0?'+':'')+x.f3.toFixed(2)+'%':'--',up:x.f3>0}));
-    D.goldData=D.goldData||{};D.goldData.stockPrices=sp;save();stockStatus='在线';updateStockCard(sp);return;
-  }
+  try{
+    const t=await safeFetch('https://qt.gtimg.cn/q=sh000001,sz399001,sz399006,sh000688,sh000300',true);
+    if(t){
+      const sp=[];const map={sh000001:'上证指数',sz399001:'深证成指',sz399006:'创业板指',sh000688:'科创50',sh000300:'沪深300'};
+      t.split('\n').filter(l=>l.startsWith('v_')).forEach(l=>{
+        const parts=l.split('~');const code=parts[0].replace('v_','').replace('sh','sh').replace('sz','sz');
+        const name=map[code];if(!name)return;
+        const price=parseFloat(parts[3]),changePct=parseFloat(parts[32]);
+        sp.push({name,price:isNaN(price)?'--':price.toFixed(2),change:isNaN(changePct)?'--':(changePct>0?'+':'')+changePct.toFixed(2)+'%',up:changePct>0});
+      });
+      if(sp.length>0){D.goldData=D.goldData||{};D.goldData.stockPrices=sp;save();stockStatus='在线';updateStockCard(sp);return}
+    }
+  }catch(e){}
   stockStatus='离线·快照';updateStockCard(null);
 }
 
@@ -1044,15 +1043,27 @@ function updateStockCard(sp){
 }
 
 async function fetchMarketOverview(){
-  const d=await safeFetch('https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=1.000001&fields=f43,f44,f46,f47,f170,f171');
-  if(d&&d.data?.diff?.[0]){
-    const x=d.data.diff[0];
-    const rd={date:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),volume:(x.f44?(x.f44/1e8).toFixed(2)+'万亿':'--'),upCount:x.f170?String(x.f170)+'+':'--',downCount:x.f171?String(x.f171)+'+':'--',limitUp:x.f46?String(x.f46):'--',limitDown:x.f47?String(x.f47):'--'};
-    const sp=D.goldData?.stockPrices||[];
-    if(sp.length>0)rd.indices=sp;
-    D.reviewData=D.reviewData||{};D.reviewData={...D.reviewData,...rd,autoFetched:true};save();
-    if(cp==='review')render('review');
-  }
+  try{
+    const t=await safeFetch('https://qt.gtimg.cn/q=sh000001',true);
+    if(t){
+      const parts=t.split('~');
+      const volume=parseFloat(parts[6]);const amount=parseFloat(parts[37]);
+      const volStr=!isNaN(volume)?(volume/1e8).toFixed(0)+'亿手':'--';
+      const amtStr=!isNaN(amount)?(amount/1e8).toFixed(2)+'万亿':'--';
+      const upCount=parseInt(parts[15]);const downCount=parseInt(parts[16]);
+      const rd={
+        date:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),
+        volume:amtStr+' (成交'+volStr+')',
+        upCount:!isNaN(upCount)?String(upCount)+'+':'--',
+        downCount:!isNaN(downCount)?String(downCount)+'+':'--',
+        limitUp:parts[45]||'--',limitDown:parts[46]||'--'
+      };
+      const sp=D.goldData?.stockPrices||[];
+      if(sp.length>0)rd.indices=sp;
+      D.reviewData=D.reviewData||{};D.reviewData={...D.reviewData,...rd,autoFetched:true};save();
+      if(cp==='review')render('review');
+    }
+  }catch(e){}
 }
 
 function updateReviewCard(rd){
