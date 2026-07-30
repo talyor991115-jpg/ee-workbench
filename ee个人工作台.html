@@ -435,7 +435,7 @@ function defData() {
     foodLogs: [],
     calendarItems: [],
     recurringTemplates: [],
-    settings:{aiKey:'sk-a318ca20b2224ab1939fe684051dd2ef',aiBaseUrl:'https://api.deepseek.com/anthropic',aiModel:'deepseek-chat'},
+    settings:{aiKey:'sk-a318ca20b2224ab1939fe684051dd2ef',aiBaseUrl:'https://api.deepseek.com',aiModel:'deepseek-chat'},
     version:2
   };
 }
@@ -451,7 +451,7 @@ function nowDate(){return new Date().toISOString().slice(0,10)}
 let cp='today',cm=null,spaceSearchTerm='';
 
 function nav(p,h){
-  if(cp==='gold'&&p!=='gold'){clearInterval(goldTimer)}
+  if(cp==='gold'&&p!=='gold'){clearInterval(goldTimer);clearInterval(stockTimer)}
   cp=p;
   document.querySelectorAll('.nav-item,.mob-nav-item').forEach(e=>e.classList.remove('active'));
   const dn=document.querySelector('.nav-item[data-p="'+p+'"]');
@@ -555,10 +555,14 @@ function wday(d){return['日','一','二','三','四','五','六'][new Date(d).g
 // ═══════════════ AI CALL ═══════════════
 async function aiCall(prompt){
   if(!D.settings.aiKey){toast('请先设置API Key');return null}
+  let base=(D.settings.aiBaseUrl||'https://api.deepseek.com').replace(/\/+$/,'');
+  if(base.endsWith('/anthropic'))base=base.slice(0,-'/anthropic'.length);
+  const url=base+'/v1/chat/completions';
+  const model=D.settings.aiModel||'deepseek-chat';
   try{
-    const r=await fetch('https://api.deepseek.com/v1/chat/completions',{
+    const r=await fetch(url,{
       method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+D.settings.aiKey},
-      body:JSON.stringify({model:'deepseek-chat',max_tokens:1024,messages:[{role:'user',content:prompt}]})
+      body:JSON.stringify({model:model,max_tokens:1024,messages:[{role:'user',content:prompt}]})
     });
     if(!r.ok){toast('AI错误: '+r.status);return null}
     const d=await r.json();
@@ -616,7 +620,7 @@ async function genWeekSummary(){
   const{start,end}=getWeekRange();
   const items=D.calendarItems.filter(c=>c.date>=start&&c.date<=end);
   if(items.length===0){toast('本周暂无日程');return}
-  const done=items.filter(i=>i.done),undone=items.filter(i=>!i.done),inprog=items.filter(i=>!i.done&&i.notes);
+  const done=items.filter(i=>i.done),undone=items.filter(i=>!i.done);
   const prompt='用户本周日程。已完成：'+done.map(i=>i.date.slice(5)+' '+i.title).join('；')+'。未完成：'+undone.map(i=>i.date.slice(5)+' '+i.title).join('；')+'。请生成简短周报（50字以内）：已完成/进行中/未完成各一句话。';
   const r=await aiCall(prompt);
   const el=document.getElementById('week-summary-out');
@@ -968,15 +972,16 @@ function cardStocks(sp){
 
 // ── Card 3: 今日黄金核心行情 ──
 function cardAnalysis(analysis){
+  const gp=D.goldData?.goldPrice||{};
   const dateStr=new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'});
-  return '<div class="card" id="card-analysis"><div class="card-hd"><div class="card-title">今日黄金核心行情（'+dateStr+'）</div></div>'+
-  '<div style="font-size:13px;line-height:2;color:var(--t2)">'+
-  '<div>国际现货黄金 ≈ <strong style="color:#B8860B">4031.74</strong> 美元/盎司 <span style="color:var(--green)">+0.</span></div>'+
-  '<div style="font-size:12px;color:var(--t3)">日内区间 4009.99 - 4047.58 美元</div>'+
-  '<div style="font-size:12px;color:var(--t3)">昨收/开盘 4028.39 / 4027.56 美元</div>'+
-  '<div>COMEX黄金期货 ≈ <strong>4028.80</strong> 美元/盎司</div>'+
-  '<div>国内金价(上金所AU9999) <strong style="color:#B8860B">878.5</strong> 元/克</div>'+
-  '<div>黄金回收价 <strong>900</strong>/克</div></div>'+
+  const hasLive=gp.ts&&(Date.now()-gp.ts)<3600000;
+  let rows='';
+  if(gp.auUsd){rows+='<div>国际现货黄金 ≈ <strong style="color:#B8860B">'+esc(gp.auUsd)+'</strong> 美元/盎司</div>'}
+  else{rows+='<div style="color:var(--t3)">国际现货黄金：实时数据未获取（见上方实时金价）</div>'}
+  if(gp.price){rows+='<div>国内金价(约) <strong style="color:#B8860B">'+esc(gp.price)+'</strong> 元/克</div>'}
+  rows+='<div style="font-size:12px;color:var(--t3);margin-top:4px">日内区间 / COMEX / 昨收开盘等明细需接入实时行情源，当前未提供</div>';
+  return '<div class="card" id="card-analysis"><div class="card-hd"><div class="card-title">今日黄金核心行情（'+dateStr+'）</div>'+(hasLive?'<span style="font-size:11px;color:var(--green)">实时</span>':'<span style="font-size:11px;color:var(--amber)">缓存/离线</span>')+'</div>'+
+  '<div style="font-size:13px;line-height:2;color:var(--t2)">'+rows+'</div>'+
   (analysis?'<div class="cal-summary" style="margin-top:12px">'+esc(analysis.content)+'</div><div style="font-size:10px;color:var(--t3);margin-top:4px">AI生成于 '+fmtDT(analysis.generatedAt)+'</div>':'')+
   '<button class="btn btn-p btn-sm" style="margin-top:12px" onclick="genGoldAnalysis()">AI 分析今日行情</button></div>';
 }
@@ -998,16 +1003,18 @@ async function refreshAllMarketData(force){
       const raw=await resp.text();const ts=Date.now();D.goldData=D.goldData||{};
       const sp=[],idxMap={sh000001:'上证指数',sz399001:'深证成指',sz399006:'创业板指',sh000688:'科创50',sh000300:'沪深300'};
       Object.entries(idxMap).forEach(([code,name])=>{const m=raw.match(new RegExp('v_'+code+'="[^"]*~[^~]*~[^~]*~([^~]+)~([^~]+)~.*?"'));if(m){const price=parseFloat(m[1]),prev=parseFloat(m[2]);sp.push({name,price:m[1],change:isNaN(price)||isNaN(prev)?'--':(((price-prev)/prev)*100).toFixed(2)+'%',up:price>=prev});}});
-      if(sp.length>0){D.goldData.stockPrices=sp;stockStatus='在线';updateStockCard(sp);D.reviewData={...D.reviewData||{},date:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),indices:sp,volume:'--',upCount:'--',downCount:'--',limitUp:'--',limitDown:'--',autoFetched:true};save()}else{stockStatus='离线·快照';updateStockCard(null)}
+      if(sp.length>0){D.goldData.stockPrices=sp;stockStatus='在线';updateStockCard(sp);D.reviewData={...D.reviewData||{},date:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),indices:sp,autoFetched:true};save()}else{stockStatus='离线·快照';updateStockCard(null)}
     }else{stockStatus='离线·快照';updateStockCard(null)}
   }catch(e){stockStatus='离线·快照';updateStockCard(null)}
 
   const ok=await injectScript('https://hq.sinajs.cn/list=hf_XAU,fx_susdcny',5000);
   if(ok){try{
     const au=window.hq_str_hf_XAU?.split(','),fx=window.hq_str_fx_susdcny?.split(',');
-    if(au&&fx&&parseFloat(au[0])>0){const ts=Date.now();D.goldData=D.goldData||{};const usd=parseFloat(au[0]),cnyRate=parseFloat(fx[1]||'6.76'),cnyPrice=(usd*cnyRate/31.1035).toFixed(2);
-      D.goldData.goldPrice={price:cnyPrice,buyback:(cnyPrice*0.997).toFixed(2),sell:(cnyPrice*1.003).toFixed(2),updatedAt:new Date(ts).toLocaleString('zh-CN'),source:'新浪财经',ts};
-      goldStatus='在线';updateGoldCard(D.goldData.goldPrice);save();return;
+    if(au&&fx&&au.length>1&&fx.length>1){const ts=Date.now();D.goldData=D.goldData||{};const usd=parseFloat(au[1]),cnyRate=parseFloat(fx[1]||'6.76');
+      if(usd>0){const cnyPrice=(usd*cnyRate/31.1035).toFixed(2);
+        D.goldData.goldPrice={price:cnyPrice,buyback:(cnyPrice*0.997).toFixed(2),sell:(cnyPrice*1.003).toFixed(2),auUsd:usd.toFixed(2),cnyRate:cnyRate.toFixed(2),updatedAt:new Date(ts).toLocaleString('zh-CN'),source:'新浪财经',ts};
+        goldStatus='在线';updateGoldCard(D.goldData.goldPrice);save();return;
+      }
     }
   }catch(e){}}
   goldStatus='离线·缓存';if(gv)updateGoldCard(gv);
@@ -1118,7 +1125,7 @@ function pgHealth(){
 
   return '<div class="pg-hd"><div><div class="page-title">健康打卡</div><div class="pg-sub">手动记录 · 温和趋势 · 不给医疗建议 '+helpBtn('所有健康数据由你手动记录。体重为可选项。趋势提醒仅基于已记录数据温和提示，不诊断疾病、不给医疗建议、不制造焦虑、不承诺减重。')+'</div></div></div>'+
 
-  '<div class="g4" style="margin-bottom:16px">'+
+  '<div class="g5" style="margin-bottom:16px">'+
   statCard(wkEx,'本周运动次数')+
   statCard(wkWa,'饮水达标天数')+
   statCard(wkBody,'身体状态记录')+
@@ -1290,7 +1297,7 @@ function addStudyNote(){
 function viewStudyNote(id){
   const n=D.studyNotes.find(x=>x.id===id);if(!n)return;
   const o=document.createElement('div');o.className='modal-overlay';
-  o.innerHTML='<div class="modal"><div class="modal-title">'+esc(n.title)+'</div><div style="font-size:14px;white-space:pre-wrap;line-height:1.8">'+esc(n.content)+'</div>'+(n.tags.length>0?'<div style="margin-top:8px">'+n.tags.map(t=>'<span class="itag">'+esc(t)+'</span>').join('')+'</div>':'')+'<div style="font-size:11px;color:var(--t3);margin-top:8px">'+fmtDT(n.createdAt)+'</div><div class="modal-actions"><button class="btn btn-s" onclick="this.closest(\'.modal-overlay\').remove()">关闭</button><button class="btn btn-d btn-sm" onclick="confirm(\'删除此笔记？\',()=>{D.studyNotes=D.studyNotes.filter(x=>x.id!==\''+n.id+'\');save();render(\'study\');this.closest(\'.modal-overlay\').remove()})">删除</button></div></div>';
+  o.innerHTML='<div class="modal"><div class="modal-title">'+esc(n.title)+'</div><div style="font-size:14px;white-space:pre-wrap;line-height:1.8">'+esc(n.content)+'</div>'+(n.tags.length>0?'<div style="margin-top:8px">'+n.tags.map(t=>'<span class="itag">'+esc(t)+'</span>').join('')+'</div>':'')+'<div style="font-size:11px;color:var(--t3);margin-top:8px">'+fmtDT(n.createdAt)+'</div><div class="modal-actions"><button class="btn btn-s" onclick="this.closest(\'.modal-overlay\').remove()">关闭</button><button class="btn btn-d btn-sm" onclick="confirm(\'删除此笔记？\',()=>{D.studyNotes=D.studyNotes.filter(x=>x.id!==\''+n.id+'\');save();render(\'study\')})">删除</button></div></div>';
   o.addEventListener('click',e=>{if(e.target===o)o.remove()});document.body.appendChild(o);
 }
 
@@ -1322,7 +1329,7 @@ function tryParseJSON(str){
     if(arrMatch)s=arrMatch[0];
     const objMatch=s.match(/\{[\s\S]*\}/);
     if(!arrMatch&&objMatch){s='['+objMatch[0]+']'}
-    s=s.replace(/，/g,',').replace(/"/g,'"').replace(/"/g,'"').replace(/'/g,'"');
+    s=s.replace(/"/g,'"').replace(/"/g,'"');
     const r=JSON.parse(s);
     return Array.isArray(r)?r:[r];
   }catch(e){return null}
@@ -1333,7 +1340,7 @@ function parseJSONObj(str){
     let s=str.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
     const m=s.match(/\{[\s\S]*\}/);
     if(m)s=m[0];
-    s=s.replace(/，/g,',').replace(/"/g,'"').replace(/"/g,'"').replace(/'/g,'"');
+    s=s.replace(/"/g,'"').replace(/"/g,'"');
     return JSON.parse(s);
   }catch(e){return null}
 }
@@ -1345,7 +1352,7 @@ function pgSpace(){
   let notes=D.spaceNotes.filter(n=>n.tab===tab);
   if(sq)notes=notes.filter(n=>n.title.toLowerCase().includes(sq)||n.content.toLowerCase().includes(sq)||n.tags.some(t=>t.toLowerCase().includes(sq)));
   notes.sort((a,b)=>b.updatedAt-a.updatedAt);
-  return '<div class="pg-hd"><div><div class="page-title">我的空间</div><div class="pg-sub">备忘录 · 读书笔记 · 灵感 · 购物清单 '+helpBtn('四个标签分类管理。支持搜索和标签。对笔记可生成简短摘要和待办，不会删除原文。')+'</div></div><button class="btn btn-p" onclick="addSpaceNote()">+ 新建</button></div>'+
+  return '<div class="pg-hd"><div><div class="page-title">我的空间</div><div class="pg-sub">备忘录 · 读书笔记 · 灵感 · 购物清单 '+helpBtn('四个标签分类管理。支持搜索和标签。对笔记可生成简短摘要和待办，不会删除原文。')+'</div></div><button class="btn btn-p" id="btn-new-space">+ 新建</button></div>'+
 
   '<div class="tabs">'+['memo','reading','inspiration','shopping'].map(t=>'<button class="tab-btn'+(tab===t?' active':'')+'" onclick="setSpaceTab(\''+t+'\')">'+({memo:'备忘录',reading:'读书笔记',inspiration:'灵感',shopping:'购物清单'}[t])+' ('+D.spaceNotes.filter(n=>n.tab===t).length+')</button>').join('')+'</div>'+
 
@@ -1380,7 +1387,7 @@ function addSpaceNote(){
 function editSpaceNote(id){
   const n=D.spaceNotes.find(x=>x.id===id);if(!n)return;
   modal('编辑笔记','<div class="fg"><label class="fl">标题</label><input class="fi" id="sn-title" value="'+esc(n.title)+'"></div><div class="fg"><label class="fl">内容</label><textarea class="ft" id="sn-content">'+esc(n.content)+'</textarea></div><div class="fg"><label class="fl">标签(逗号分隔)</label><input class="fi" id="sn-tags" value="'+esc(n.tags.join(','))+'"></div>',()=>{
-    n.title=mv('#sn-title');n.content=mv('#sn-content');n.tags=mv('#sn-tags').split(',').map(s=>s.trim()).filter(Boolean);n.updatedAt=Date.now();
+    n.title=mv('#sn-title');n.content=mv('#sn-content');n.tags=mv('#sn-tags').split(/[,，]/).map(s=>s.trim()).filter(Boolean);n.updatedAt=Date.now();
     save();render('space');
   });
 }
@@ -1472,6 +1479,10 @@ function clearAll(){D=defData();save();toast('已清除');nav('today')}
 function bindPg(p){
   if(p==='search'){const inp=document.getElementById('global-search');if(inp){setTimeout(()=>inp.focus(),100);doSearch()}}
   if(p==='ai'){const inp=document.getElementById('chat-inp');if(inp)setTimeout(()=>inp.focus(),100)}
+  if(p==='space'){
+    const inp=document.getElementById('space-search');if(inp){inp.focus();const v=inp.value;inp.value='';inp.value=v;}
+    const btn=document.getElementById('btn-new-space');if(btn)btn.onclick=function(){addSpaceNote()};
+  }
 }
 
 // ═══════════════ LOGIN ═══════════════
