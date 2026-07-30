@@ -435,7 +435,7 @@ function defData() {
     foodLogs: [],
     calendarItems: [],
     recurringTemplates: [],
-    settings:{aiKey:'sk-a318ca20b2224ab1939fe684051dd2ef',aiBaseUrl:'https://api.deepseek.com',aiModel:'deepseek-chat'},
+    settings:{aiKey:'sk-a318ca20b2224ab1939fe684051dd2ef',aiBaseUrl:'https://api.deepseek.com',aiModel:'deepseek-chat',tickdbKey:''},
     version:2
   };
 }
@@ -997,27 +997,22 @@ async function refreshAllMarketData(force){
   const gd=D.goldData||{};const gv=gd.goldPrice,sv=gd.stockPrices;
   if(!force&&gv?.ts&&(Date.now()-gv.ts)<300000&&sv?.length>0){goldStatus='在线';stockStatus='在线';updateGoldCard(gv);updateStockCard(sv);return}
 
+  const tk=D.settings.tickdbKey;
+  if(!tk){goldStatus='需Key';stockStatus='需Key';if(gv)updateGoldCard(gv);updateStockCard(null);return}
   try{
-    const resp=await fetch('https://qt.gtimg.cn/q=sh000001,sz399001,sz399006,sh000688,sh000300',{signal:AbortSignal.timeout(5000)});
-    if(resp.ok){
-      const raw=await resp.text();const ts=Date.now();D.goldData=D.goldData||{};
-      const sp=[],idxMap={sh000001:'上证指数',sz399001:'深证成指',sz399006:'创业板指',sh000688:'科创50',sh000300:'沪深300'};
-      Object.entries(idxMap).forEach(([code,name])=>{const m=raw.match(new RegExp('v_'+code+'="[^"]*~[^~]*~[^~]*~([^~]+)~([^~]+)~.*?"'));if(m){const price=parseFloat(m[1]),prev=parseFloat(m[2]);sp.push({name,price:m[1],change:isNaN(price)||isNaN(prev)?'--':(((price-prev)/prev)*100).toFixed(2)+'%',up:price>=prev});}});
-      if(sp.length>0){D.goldData.stockPrices=sp;stockStatus='在线';updateStockCard(sp);D.reviewData={...D.reviewData||{},date:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),indices:sp,autoFetched:true};save()}else{stockStatus='离线·快照';updateStockCard(null)}
-    }else{stockStatus='离线·快照';updateStockCard(null)}
-  }catch(e){stockStatus='离线·快照';updateStockCard(null)}
-
-  const ok=await injectScript('https://hq.sinajs.cn/list=hf_XAU,fx_susdcny',5000);
-  if(ok){try{
-    const au=window.hq_str_hf_XAU?.split(','),fx=window.hq_str_fx_susdcny?.split(',');
-    if(au&&fx&&au.length>1&&fx.length>1){const ts=Date.now();D.goldData=D.goldData||{};const usd=parseFloat(au[1]),cnyRate=parseFloat(fx[1]||'6.76');
-      if(usd>0){const cnyPrice=(usd*cnyRate/31.1035).toFixed(2);
-        D.goldData.goldPrice={price:cnyPrice,buyback:(cnyPrice*0.997).toFixed(2),sell:(cnyPrice*1.003).toFixed(2),auUsd:usd.toFixed(2),cnyRate:cnyRate.toFixed(2),updatedAt:new Date(ts).toLocaleString('zh-CN'),source:'新浪财经',ts};
-        goldStatus='在线';updateGoldCard(D.goldData.goldPrice);save();return;
-      }
-    }
-  }catch(e){}}
-  goldStatus='离线·缓存';if(gv)updateGoldCard(gv);
+    const resp=await fetch('https://api.tickdb.ai/v1/market/ticker?symbols=XAUUSD,000001.SS,399001.SZ,399006.SZ,000688.SS,000300.SS',{headers:{'X-API-Key':tk},signal:AbortSignal.timeout(5000)});
+    if(!resp.ok){goldStatus='离线·缓存';stockStatus='离线·快照';if(gv)updateGoldCard(gv);updateStockCard(null);return}
+    const j=await resp.json();const data=Array.isArray(j)?j:(j.data||[]);
+    const ts=Date.now();D.goldData=D.goldData||{};let gp=null,sp=[];
+    const nameMap={'000001.SS':'上证指数','399001.SZ':'深证成指','399006.SZ':'创业板指','000688.SS':'科创50','000300.SS':'沪深300'};
+    data.forEach(function(item){
+      const sym=item.symbol||item.s||'';
+      if(sym==='XAUUSD'){const p=item.price||item.last||item.p;if(!p)return;const c=6.76;const cny=(p*c/31.1035).toFixed(2);gp={price:cny,buyback:(cny*0.997).toFixed(2),sell:(cny*1.003).toFixed(2),updatedAt:new Date(ts).toLocaleString('zh-CN'),source:'TickDB',ts};}
+      else{const nm=nameMap[sym];if(!nm)return;const pr=item.price||item.last||item.p,cp=item.changePercent||item.change||item.cp;sp.push({name:nm,price:pr!=null?String(pr):'--',change:cp!=null?(cp>0?'+':'')+cp+'%':'--',up:cp>=0});}
+    });
+    if(gp){D.goldData.goldPrice=gp;goldStatus='在线';updateGoldCard(gp)}else{goldStatus='离线·缓存';if(gv)updateGoldCard(gv)}
+    if(sp.length>0){D.goldData.stockPrices=sp;stockStatus='在线';updateStockCard(sp);D.reviewData={...D.reviewData||{},date:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),indices:sp,autoFetched:true};save()}else{stockStatus='离线·快照';updateStockCard(null)}
+  }catch(e){goldStatus='离线·缓存';stockStatus='离线·快照';if(gv)updateGoldCard(gv);updateStockCard(null)}
 }
 
 function updateGoldCard(gp){
@@ -1458,7 +1453,7 @@ function pgSettings(){
   const s=D.settings;
   return '<div class="pg-hd"><div><div class="page-title">设置与数据</div><div class="pg-sub">AI配置、数据管理、使用说明 '+helpBtn('管理所有设置。定期导出备份。同步状态如实展示。')+'</div></div></div>'+
 
-  '<div class="set-sec"><div class="set-sec-title">AI 配置</div><div class="fg"><label class="fl">API Key</label><input class="fi" id="set-key" type="password" value="'+esc(s.aiKey||'')+'" placeholder="sk-..."><div style="font-size:11px;color:var(--t3);margin-top:4px">DeepSeek API Key，在 platform.deepseek.com 获取。仅存本地浏览器。</div></div><div class="fg"><label class="fl">接口地址</label><input class="fi" id="set-url" value="'+esc(s.aiBaseUrl||'')+'"></div><button class="btn btn-p" onclick="saveSet()">保存设置</button></div>'+
+  '<div class="set-sec"><div class="set-sec-title">AI 配置</div><div class="fg"><label class="fl">DeepSeek API Key</label><input class="fi" id="set-key" type="password" value="'+esc(s.aiKey||'')+'" placeholder="sk-..."><div style="font-size:11px;color:var(--t3);margin-top:4px">DeepSeek API Key，在 platform.deepseek.com 获取。仅存本地浏览器。</div></div><div class="fg"><label class="fl">TickDB Key（实时行情）</label><input class="fi" id="set-tickdb" type="password" value="'+esc(s.tickdbKey||'')+'" placeholder="在 tickdb.ai 免费注册获取"><div style="font-size:11px;color:var(--t3);margin-top:4px">TickDB 提供黄金+A股实时数据。在 tickdb.ai 免费注册，无需信用卡。</div></div><button class="btn btn-p" onclick="saveSet()">保存设置</button></div>'+
 
   '<div class="set-sec"><div class="set-sec-title">多端同步</div><div style="padding:16px;background:var(--bg);border-radius:var(--rs);font-size:13px;color:var(--t2);line-height:1.8"><strong>当前仅本地保存</strong><br>本工作台为纯前端页面，无后端服务器和数据库。数据保存在浏览器 localStorage 中。<br><br>更换浏览器或设备后数据不会自动同步，需手动导出/导入。<br><br>如需多端同步，可自行配置以下方案（需一定技术能力）：<br>· GitHub 私有仓库 + 定期推拉 JSON 备份<br>· 自建 WebDAV/NAS 同步文件夹<br>· Supabase 等 BaaS（需自行开发同步逻辑）</div></div>'+
 
@@ -1483,7 +1478,7 @@ function pgSettings(){
   '</div>';
 }
 
-function saveSet(){D.settings.aiKey=document.getElementById('set-key')?.value||'';D.settings.aiBaseUrl=document.getElementById('set-url')?.value||'';save();toast('已保存')}
+function saveSet(){D.settings.aiKey=document.getElementById('set-key')?.value||'';D.settings.tickdbKey=document.getElementById('set-tickdb')?.value||'';save();toast('已保存')}
 function exportData(){const b=new Blob([JSON.stringify(D,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='ee_wb_'+nowDate()+'.json';a.click();URL.revokeObjectURL(u);toast('已导出')}
 function importData(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=function(ev){try{const d=JSON.parse(ev.target.result);D={...defData(),...d,settings:{...defData().settings,...(d.settings||{})},health:{...defData().health,...(d.health||{})}};save();toast('已导入');nav(cp)}catch(err){toast('无效文件')}};r.readAsText(f);e.target.value=''}
 function clearAll(){D=defData();save();toast('已清除');nav('today')}
