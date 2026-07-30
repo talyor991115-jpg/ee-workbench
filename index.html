@@ -1352,13 +1352,11 @@ function pgSpace(){
   let notes=D.spaceNotes.filter(n=>n.tab===tab);
   if(sq)notes=notes.filter(n=>n.title.toLowerCase().includes(sq)||n.content.toLowerCase().includes(sq)||n.tags.some(t=>t.toLowerCase().includes(sq)));
   notes.sort((a,b)=>b.updatedAt-a.updatedAt);
-  var h='<div class="pg-hd"><div><div class="page-title">我的空间</div><div class="pg-sub">备忘录 · 读书笔记 · 灵感 · 购物清单</div></div></div>';
+  var h='<div class="pg-hd"><div><div class="page-title">我的空间</div><div class="pg-sub">备忘录 · 读书笔记 · 灵感 · 购物清单</div></div><button class="btn btn-p" id="btn-new-space">+ 新建</button></div>';
 
   h+='<div class="tabs">'+['memo','reading','inspiration','shopping'].map(function(t){return '<button class="tab-btn'+(tab===t?' active':'')+'" onclick="setSpaceTab(\''+t+'\')">'+({memo:'备忘录',reading:'读书笔记',inspiration:'灵感',shopping:'购物清单'}[t])+' ('+D.spaceNotes.filter(function(n){return n.tab===t}).length+')</button>'}).join('')+'</div>';
 
   h+='<div class="search-wrap"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input class="search-inp" id="space-search" placeholder="搜索'+({memo:'备忘录',reading:'读书笔记',inspiration:'灵感',shopping:'购物清单'}[tab])+'..." value="'+esc(spaceSearchTerm)+'" oninput="spaceSearchTerm=this.value;render(\'space\')"></div>';
-
-  h+='<button id="btn-new-space" style="display:block;width:100%;padding:14px;margin-bottom:16px;background:var(--text);color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer">+ 新建</button>';
 
   if(notes.length===0){h+='<div class="empty"><div class="empty-title">暂无'+({memo:'备忘录',reading:'读书笔记',inspiration:'灵感',shopping:'购物清单'}[tab])+'</div><div class="empty-desc">点击上方"新建"添加第一条</div></div>'}
   else{for(var i=0;i<notes.length;i++){var n=notes[i];h+='<div class="card" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><div style="flex:1"><div style="font-weight:600;font-size:15px">'+esc(n.title)+'</div>'+(n.tags.length>0?'<div style="margin-top:4px">'+n.tags.map(function(t){return '<span class="itag">'+esc(t)+'</span>'}).join('')+'</div>':'')+'<div style="font-size:13px;color:var(--t2);margin-top:6px;white-space:pre-wrap">'+esc(n.content).slice(0,200)+(n.content.length>200?'...':'')+'</div><div style="font-size:11px;color:var(--t3);margin-top:4px">'+fmtDT(n.updatedAt)+'</div>'+(n.aiSummary?'<div style="font-size:12px;background:var(--hl);padding:8px;border-radius:var(--rs);margin-top:6px;white-space:pre-wrap">'+esc(n.aiSummary)+'</div>':'')+'</div></div><div style="display:flex;gap:4px;margin-top:8px"><button class="btn btn-xs btn-s" onclick="editSpaceNote(\''+n.id+'\')">编辑</button><button class="btn btn-xs btn-s" onclick="summarizeNote(\''+n.id+'\')">AI摘要</button><button class="btn btn-xs btn-d" onclick="confirm(\'删除此笔记？\',function(){D.spaceNotes=D.spaceNotes.filter(function(x){return x.id!==\''+n.id+'\'});save();render(\'space\')})">删除</button></div></div>'}}
@@ -1526,9 +1524,9 @@ function isLoggedIn(){
 // ═══════════════ INIT ═══════════════
 function initApp(){
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(cm){closeModal();return}if(document.querySelector('.more-overlay')){closeMore();return}}});
-  document.getElementById('main-content').addEventListener('click',function(e){
-    const btn=e.target.closest('button');if(!btn)return;
-    if(btn.id==='btn-new-space')addSpaceNote();
+  document.addEventListener('click',function(e){
+    var btn=e.target.closest('button');if(!btn)return;
+    if(btn.id==='btn-new-space'){addSpaceNote();return}
   });
   document.getElementById('topbar-date').textContent=new Date().toLocaleDateString('zh-CN',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
   nav('today');
