@@ -1369,7 +1369,7 @@ function getSpaceTab(){try{return sessionStorage.getItem('ee_space_tab')||'memo'
 function setSpaceTab(t){try{sessionStorage.setItem('ee_space_tab',t)}catch(e){}render('space')}
 
 function addSpaceNote(){
-  var tab,labels,label,o,m,t,i,c,g,sb;
+  var tab,labels,label,o,m,cancelBtn,saveBtn,titleInput,contentInput,tagsInput;
   tab=getSpaceTab();
   labels={memo:'备忘录',reading:'读书笔记',inspiration:'灵感',shopping:'购物清单'};
   label=labels[tab]||'备忘录';
@@ -1379,17 +1379,21 @@ function addSpaceNote(){
     '<div class=\"fg\"><label class=\"fl\">标题</label><input class=\"fi\" id=\"sn-title\" autofocus></div>'+
     '<div class=\"fg\"><label class=\"fl\">内容</label><textarea class=\"ft\" id=\"sn-content\"></textarea></div>'+
     '<div class=\"fg\"><label class=\"fl\">标签(逗号分隔)</label><input class=\"fi\" id=\"sn-tags\" placeholder=\"如：重要,待整理\"></div>'+
-    '<div class=\"modal-actions\"><button class=\"btn btn-s\" id=\"sn-cancel\">取消</button><button class=\"btn btn-p\" id=\"sn-save\">保存</button></div>';
+    '<div class=\"modal-actions\" id=\"sn-actions\"></div>';
   o.appendChild(m);document.body.appendChild(o);
+  cancelBtn=document.createElement('button');cancelBtn.className='btn btn-s';cancelBtn.textContent='取消';
+  saveBtn=document.createElement('button');saveBtn.className='btn btn-p';saveBtn.textContent='保存';
+  document.getElementById('sn-actions').appendChild(cancelBtn);
+  document.getElementById('sn-actions').appendChild(saveBtn);
   o.onclick=function(e){if(e.target===o){o.remove()}};
-  document.getElementById('sn-cancel').onclick=function(){o.remove()};
-  document.getElementById('sn-save').onclick=function(){
-    t=document.getElementById('sn-title');if(!t||!t.value.trim())return;
-    c=document.getElementById('sn-content');
-    g=document.getElementById('sn-tags');
-    s=(g?g.value:'').split(/[,，]/);
-    i=[];for(var j=0;j<s.length;j++){var x=s[j].trim();if(x)i.push(x)}
-    D.spaceNotes.unshift({id:gid(),tab:tab,title:t.value.trim(),content:c?c.value:'',tags:i,createdAt:Date.now(),updatedAt:Date.now(),aiSummary:''});
+  cancelBtn.onclick=function(){o.remove()};
+  saveBtn.onclick=function(){
+    titleInput=document.getElementById('sn-title');if(!titleInput||!titleInput.value.trim())return;
+    contentInput=document.getElementById('sn-content');
+    tagsInput=document.getElementById('sn-tags');
+    var arr=[],raw=(tagsInput?tagsInput.value:'').split(/[,，]/);
+    for(var j=0;j<raw.length;j++){var x=raw[j].trim();if(x)arr.push(x)}
+    D.spaceNotes.unshift({id:gid(),tab:tab,title:titleInput.value.trim(),content:contentInput?contentInput.value:'',tags:arr,createdAt:Date.now(),updatedAt:Date.now(),aiSummary:''});
     save();render('space');o.remove();
   };
 }
