@@ -986,23 +986,31 @@ async function safeFetch(url,asText=false){
   try{const r=await fetch(url,{signal:AbortSignal.timeout(5000)});return asText?await r.text():await r.json()}catch(e){return null}
 }
 
+function injectScript(url,tm){return new Promise(r=>{const s=document.createElement('script');s.src=url;s.onload=()=>{s.remove();r(true)};s.onerror=()=>{s.remove();r(false)};setTimeout(()=>{s.remove();r(false)},tm);document.head.appendChild(s)})}
+
 async function refreshAllMarketData(force){
   const gd=D.goldData||{};const gv=gd.goldPrice,sv=gd.stockPrices;
   if(!force&&gv?.ts&&(Date.now()-gv.ts)<300000&&sv?.length>0){goldStatus='在线';stockStatus='在线';updateGoldCard(gv);updateStockCard(sv);return}
+
   try{
-    const t=await fetch('https://hq.sinajs.cn/list=hf_XAU,fx_susdcny,s_sh000001,s_sz399001,s_sz399006,s_sh000688,s_sh000300',{signal:AbortSignal.timeout(5000)});
-    if(t.ok){
-      const raw=await t.text();const ts=Date.now();D.goldData=D.goldData||{};let gp=null,sp=[];
-      const auMatch=raw.match(/hf_XAU="([^"]+)"/),fxMatch=raw.match(/fx_susdcny="([^"]+)"/);
-      if(auMatch&&fxMatch){const au=auMatch[1].split(','),fx=fxMatch[1].split(',');const usd=parseFloat(au[0]),cnyRate=parseFloat(fx[1]||'6.76');if(usd>0){const cnyPrice=(usd*cnyRate/31.1035).toFixed(2);gp={price:cnyPrice,buyback:(cnyPrice*0.997).toFixed(2),sell:(cnyPrice*1.003).toFixed(2),updatedAt:new Date(ts).toLocaleString('zh-CN'),source:'新浪财经',ts};}}
-      const idxMap={sh000001:'上证指数',sz399001:'深证成指',sz399006:'创业板指',sh000688:'科创50',sh000300:'沪深300'};
-      Object.entries(idxMap).forEach(([code,name])=>{const m=raw.match(new RegExp(code+'="([^"]+)"'));if(m){const p=m[1].split(','),price=parseFloat(p[1]),prev=parseFloat(p[2]);sp.push({name,price:isNaN(price)?'--':price.toFixed(2),change:isNaN(price)||isNaN(prev)?'--':(((price-prev)/prev)*100).toFixed(2)+'%',up:price>=prev});}});
-      if(gp){D.goldData.goldPrice=gp;goldStatus='在线';updateGoldCard(gp)}else{goldStatus='离线·缓存';if(gv)updateGoldCard(gv)}
-      if(sp.length>0){D.goldData.stockPrices=sp;stockStatus='在线';updateStockCard(sp);D.reviewData={...D.reviewData||{},volume:'--',upCount:'--',downCount:'--',limitUp:'--',limitDown:'--',date:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),indices:sp,autoFetched:true};save()}else{stockStatus='离线·快照';updateStockCard(null)}
-      return;
+    const resp=await fetch('https://qt.gtimg.cn/q=sh000001,sz399001,sz399006,sh000688,sh000300',{signal:AbortSignal.timeout(5000)});
+    if(resp.ok){
+      const raw=await resp.text();const ts=Date.now();D.goldData=D.goldData||{};
+      const sp=[],idxMap={sh000001:'上证指数',sz399001:'深证成指',sz399006:'创业板指',sh000688:'科创50',sh000300:'沪深300'};
+      Object.entries(idxMap).forEach(([code,name])=>{const m=raw.match(new RegExp('v_'+code+'="[^"]*~[^~]*~[^~]*~([^~]+)~([^~]+)~.*?"'));if(m){const price=parseFloat(m[1]),prev=parseFloat(m[2]);sp.push({name,price:m[1],change:isNaN(price)||isNaN(prev)?'--':(((price-prev)/prev)*100).toFixed(2)+'%',up:price>=prev});}});
+      if(sp.length>0){D.goldData.stockPrices=sp;stockStatus='在线';updateStockCard(sp);D.reviewData={...D.reviewData||{},date:new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'}),indices:sp,volume:'--',upCount:'--',downCount:'--',limitUp:'--',limitDown:'--',autoFetched:true};save()}else{stockStatus='离线·快照';updateStockCard(null)}
+    }else{stockStatus='离线·快照';updateStockCard(null)}
+  }catch(e){stockStatus='离线·快照';updateStockCard(null)}
+
+  const ok=await injectScript('https://hq.sinajs.cn/list=hf_XAU,fx_susdcny',5000);
+  if(ok){try{
+    const au=window.hq_str_hf_XAU?.split(','),fx=window.hq_str_fx_susdcny?.split(',');
+    if(au&&fx&&parseFloat(au[0])>0){const ts=Date.now();D.goldData=D.goldData||{};const usd=parseFloat(au[0]),cnyRate=parseFloat(fx[1]||'6.76'),cnyPrice=(usd*cnyRate/31.1035).toFixed(2);
+      D.goldData.goldPrice={price:cnyPrice,buyback:(cnyPrice*0.997).toFixed(2),sell:(cnyPrice*1.003).toFixed(2),updatedAt:new Date(ts).toLocaleString('zh-CN'),source:'新浪财经',ts};
+      goldStatus='在线';updateGoldCard(D.goldData.goldPrice);save();return;
     }
-  }catch(e){}
-  goldStatus='离线·缓存';stockStatus='离线·快照';if(gv)updateGoldCard(gv);updateStockCard(null);
+  }catch(e){}}
+  goldStatus='离线·缓存';if(gv)updateGoldCard(gv);
 }
 
 function updateGoldCard(gp){
