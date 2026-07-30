@@ -1367,11 +1367,12 @@ function getSpaceTab(){try{return sessionStorage.getItem('ee_space_tab')||'memo'
 function setSpaceTab(t){try{sessionStorage.setItem('ee_space_tab',t)}catch(e){}render('space')}
 
 function addSpaceNote(){
+  if(document.getElementById('sn-modal-overlay'))return;
   var tab,labels,label,o,m,cancelBtn,saveBtn,titleInput,contentInput,tagsInput;
   tab=getSpaceTab();
   labels={memo:'备忘录',reading:'读书笔记',inspiration:'灵感',shopping:'购物清单'};
   label=labels[tab]||'备忘录';
-  o=document.createElement('div');o.className='modal-overlay';
+  o=document.createElement('div');o.className='modal-overlay';o.id='sn-modal-overlay';
   m=document.createElement('div');m.className='modal';
   m.innerHTML='<div class=\"modal-title\">新建'+label+'</div>'+
     '<div class=\"fg\"><label class=\"fl\">标题</label><input class=\"fi\" id=\"sn-title\" autofocus></div>'+
@@ -1492,16 +1493,15 @@ function bindPg(p){
   if(p==='search'){const inp=document.getElementById('global-search');if(inp){setTimeout(()=>inp.focus(),100);doSearch()}}
   if(p==='ai'){const inp=document.getElementById('chat-inp');if(inp)setTimeout(()=>inp.focus(),100)}
   if(p==='space'){
-    const inp=document.getElementById('space-search');if(inp){inp.focus();const v=inp.value;inp.value='';inp.value=v;}
     setTimeout(function(){
       const slot=document.getElementById('space-btn-slot');
-      if(!slot)return;
-      slot.innerHTML='';
+      if(!slot||slot.children.length>0)return;
       const btn=document.createElement('button');
       btn.className='btn btn-p';btn.textContent='+ 新建';
+      btn.style.cssText='padding:10px 24px;font-size:14px;cursor:pointer;position:relative;z-index:10';
       btn.onclick=function(e){e.preventDefault();e.stopPropagation();addSpaceNote();};
       slot.appendChild(btn);
-    },50);
+    },100);
   }
 }
 
