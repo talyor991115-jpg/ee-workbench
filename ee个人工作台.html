@@ -556,17 +556,17 @@ async function aiCall(prompt){
   if(!D.settings.aiKey){toast('请先设置API Key');return null}
   let r,t;
   try{
-    r=await fetch('https://api.deepseek.com/v1/chat/completions',{
-      method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+D.settings.aiKey},
-      body:JSON.stringify({model:'deepseek-chat',max_tokens:800,messages:[{role:'user',content:prompt}]})
+    r=await fetch('https://api.deepseek.com/anthropic/v1/messages',{
+      method:'POST',headers:{'Content-Type':'application/json','x-api-key':D.settings.aiKey,'anthropic-version':'2023-06-01'},
+      body:JSON.stringify({model:'deepseek-v4-pro',max_tokens:1024,messages:[{role:'user',content:prompt}]})
     });
-    if(r.ok){const d=await r.json();return d.choices?.[0]?.message?.content||''}
+    if(r.ok){const d=await r.json();return d.content?.[0]?.text||''}
     t=await r.text();
   }catch(e){}
   try{
     r=await fetch('https://api.deepseek.com/anthropic/v1/messages',{
       method:'POST',headers:{'Content-Type':'application/json','x-api-key':D.settings.aiKey,'anthropic-version':'2023-06-01'},
-      body:JSON.stringify({model:'deepseek-chat',max_tokens:800,messages:[{role:'user',content:prompt}]})
+      body:JSON.stringify({model:'deepseek-v4-flash',max_tokens:1024,messages:[{role:'user',content:prompt}]})
     });
     if(r.ok){const d=await r.json();return d.content?.[0]?.text||''}
     t=await r.text();
