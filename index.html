@@ -937,18 +937,16 @@ function updateTimers(){
 
 // ── Card 1: 实时金价 ──
 function cardGold(gp){
-  const price=gp.price||'875.11';
-  const buyback=gp.buyback||'875.11';
-  const sell=gp.sell||'877.11';
-  const updated=gp.updatedAt||'2026-07-29 21:03:03';
-  const src=gp.source||'融通金实时报价(vapi.danran0.cc)';
+  if(!gp)gp={price:'--',buyback:'--',sell:'--',updatedAt:'--',source:'新浪财经'};
+  const price=gp.price||'--',buyback=gp.buyback||'--',sell=gp.sell||'--';
+  const updated=gp.updatedAt||'--',src=gp.source||'新浪财经';
   const now=new Date().toLocaleTimeString('zh-CN',{hour12:false});
   const isOnline=goldStatus==='在线';
-  return '<div class="card" style="margin-bottom:14px" id="card-gold"><div class="card-hd"><div class="card-title">实时金价（自动刷新）</div><span style="font-size:11px;color:'+(isOnline?'var(--green)':'var(--amber)')+'">'+(isOnline?'在线':'离线·缓存')+'</span></div>'+
-  '<div style="text-align:center;padding:16px 0"><div style="font-size:42px;font-weight:700;color:#B8860B">¥'+esc(price)+'/克</div><div style="font-size:14px;color:var(--t2);margin-top:4px">持平</div></div>'+
-  '<div style="display:flex;justify-content:space-around;padding:12px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:13px"><div>融通金回购价<span style="font-weight:600;display:block">¥'+esc(buyback)+'</span></div><div>销售<span style="font-weight:600;display:block">¥'+esc(sell)+'</span></div><div>更新<span style="font-weight:600;display:block">'+esc(updated)+'</span></div></div>'+
-  '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;font-size:11px;color:var(--t3)"><span>本地每1秒刷新 · '+now+'</span><div style="display:flex;gap:4px"><button class="btn btn-xs btn-s" onclick="fetchGoldPrice()">刷新</button>'+(isOnline?'':'<button class="btn btn-xs btn-p" onclick="aiFetchGold()">AI获取</button>')+'</div></div>'+
-  '<div style="font-size:10px;color:var(--t3);margin-top:4px">来源：融通金实时报价（vapi.danran0.cc）· 每1秒自动刷新；断网时显示最近缓存</div></div>';
+  return '<div class="card" style="margin-bottom:14px" id="card-gold"><div class="card-hd"><div class="card-title">实时金价</div><span style="font-size:11px;color:'+(isOnline?'var(--green)':'var(--amber)')+'">'+(isOnline?'在线':'离线·缓存')+'</span></div>'+
+  '<div style="text-align:center;padding:16px 0"><div style="font-size:42px;font-weight:700;color:#B8860B">'+(price==='--'?'--':'¥'+esc(price)+'/克')+'</div></div>'+
+  '<div style="display:flex;justify-content:space-around;padding:12px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:13px"><div>回购价<span style="font-weight:600;display:block">'+(buyback==='--'?'--':'¥'+esc(buyback))+'</span></div><div>销售价<span style="font-weight:600;display:block">'+(sell==='--'?'--':'¥'+esc(sell))+'</span></div><div>更新<span style="font-weight:600;display:block">'+esc(updated)+'</span></div></div>'+
+  '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;font-size:11px;color:var(--t3)"><span>每5秒刷新 · '+now+'</span><button class="btn btn-xs btn-s" onclick="refreshAllMarketData(true)">刷新</button></div>'+
+  '<div style="font-size:10px;color:var(--t3);margin-top:4px">来源：'+esc(src)+' · 每5秒自动刷新；断网时显示最近缓存</div></div>';
 }
 
 // ── Card 2: 实时股市 ──
@@ -963,7 +961,7 @@ function cardStocks(sp){
   const isOnline=stockStatus==='在线';
   return '<div class="card" style="margin-bottom:14px" id="card-stocks"><div class="card-hd"><div class="card-title">实时股市（A股主要指数·自动刷新）</div><span style="font-size:11px;color:'+(isOnline?'var(--green)':'var(--amber)')+'">'+(isOnline?'在线':'离线·快照')+'</span></div>'+
   stocks.map(s=>'<div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px"><span style="flex:1">'+esc(s.name)+'</span><span style="font-weight:600;margin-right:12px">'+esc(s.price)+'</span><span style="color:'+(s.up===true?'var(--warn)':s.up===false?'var(--green)':'var(--t3)')+'">'+esc(s.change)+'</span></div>').join('')+
-  '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px"><div style="font-size:10px;color:var(--t3)">来源：腾讯财经 · 每60秒自动刷新；断网时显示快照</div>'+(isOnline?'':'<button class="btn btn-xs btn-p" onclick="aiFetchStocks()">AI获取</button>')+'</div></div>';
+  '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px"><div style="font-size:10px;color:var(--t3)">来源：腾讯财经 · 每5秒自动刷新</div><button class="btn btn-xs btn-s" onclick="refreshAllMarketData(true)">刷新</button></div></div>';
 }
 
 // ── Card 3: 今日黄金核心行情 ──
