@@ -421,7 +421,7 @@ function defData() {
     yearGoals: [],
     monthGoals: [],
     weekActions: [],
-    health:{exercise:[],water:[],body:[],diet:[],medicine:[],sleep:[],customHabits:[]},
+    health:{exercise:[],water:[],body:[],diet:[],medicine:[],sleep:[],customHabits:[],periods:[]},
     skinProfile:{},
     skinLogs:[],
     skinRecs:[],
@@ -1157,7 +1157,10 @@ function pgHealth(){
 
   '<div class="card" style="margin-bottom:14px"><div class="card-hd"><div class="card-title">用药提醒 '+helpBtn('手动记录用药，不会自动提醒。')+'</div><button class="btn btn-p btn-sm" onclick="addMed()">+ 记录</button></div>'+
   (h.medicine.length===0?'<div class="empty"><div class="empty-title">暂无用药记录</div></div>':
-  h.medicine.slice(0,7).map(m=>'<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)">'+m.date+' · '+esc(m.name)+(m.taken?' · 已服用':' · 未服用')+'</div>').join(''))+'</div>'+
+  h.medicine.slice(0,7).map(m=>'<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)">'+m.date+(m.time?' '+m.time:'')+' · '+esc(m.name)+(m.taken?' · 已服用':' · 未服用')+'</div>').join(''))+'</div>'+
+
+  '<div class="card" style="margin-bottom:14px"><div class="card-hd"><div class="card-title">经期记录 '+helpBtn('记录每次经期开始和结束时间，自动计算周期长度并预测下次时间。仅保存在本地。')+'</div><button class="btn btn-p btn-sm" onclick="addPeriod()">+ 记录</button></div>'+
+  renderPeriods()+'</div>'+
 
   '<div class="card" style="margin-bottom:14px"><div class="card-hd"><div class="card-title">体重记录（可选） '+helpBtn('体重为可选项，不构成压力。不想记录可以不填。')+'</div><button class="btn btn-s btn-sm" onclick="addWeight()">+ 记录</button></div>'+
   ((h.weight||[]).length===0?'<div class="empty"><div class="empty-title">暂无体重记录</div><div class="empty-desc">按需记录，不强制</div></div>':
@@ -1209,9 +1212,9 @@ function addWater(){
 }
 
 function addMed(){
-  modal('记录用药','<div class="fg"><label class="fl">日期</label><input class="fi" type="date" id="md-date" value="'+nowDate()+'"></div><div class="fg"><label class="fl">药品名称</label><input class="fi" id="md-name" placeholder="如：维生素B"></div><div class="fg"><label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" id="md-taken" checked> 已服用</label></div>',()=>{
-    const d=mv('#md-date'),n=mv('#md-name').trim();if(!d||!n)return;
-    D.health.medicine.unshift({id:gid(),date:d,name:n,taken:document.getElementById('md-taken')?.checked||false});
+  modal('记录用药','<div class="fg"><label class="fl">日期</label><input class="fi" type="date" id="md-date" value="'+nowDate()+'"></div><div class="fg"><label class="fl">时间</label><input class="fi" type="time" id="md-time" value="'+new Date().toTimeString().slice(0,5)+'"></div><div class="fg"><label class="fl">药品名称</label><input class="fi" id="md-name" placeholder="如：维生素B"></div><div class="fg"><label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" id="md-taken" checked> 已服用</label></div>',()=>{
+    const d=mv('#md-date'),t=mv('#md-time'),n=mv('#md-name').trim();if(!d||!n)return;
+    D.health.medicine.unshift({id:gid(),date:d,time:t||'',name:n,taken:document.getElementById('md-taken')?.checked||false});
     save();render('health');toast('已记录');
   });
 }
@@ -1221,6 +1224,34 @@ function addWeight(){
     const d=mv('#wg-date'),v=parseFloat(mv('#wg-val'));if(!d||isNaN(v))return;
     if(!D.health.weight)D.health.weight=[];
     D.health.weight.unshift({id:gid(),date:d,value:v});save();render('health');toast('已记录');
+  });
+}
+
+function renderPeriods(){
+  var records=(D.health.periods||[]).sort(function(a,b){return b.startDate.localeCompare(a.startDate)});
+  if(records.length===0)return '<div class="empty"><div class="empty-title">暂无经期记录</div></div>';
+  var h='';
+  var lastPeriod=records[0];
+  if(lastPeriod&&lastPeriod.cycleLength){
+    var nextDate=new Date(lastPeriod.startDate);
+    nextDate.setDate(nextDate.getDate()+parseInt(lastPeriod.cycleLength));
+    var nextStr=nextDate.toLocaleDateString('zh-CN',{month:'long',day:'numeric'});
+    var now=new Date();var daysUntil=Math.round((nextDate-now)/(86400000));
+    h+='<div style="padding:10px 14px;margin-bottom:8px;background:var(--hl);border-radius:var(--rs);font-size:13px">预计下次: <strong>'+nextStr+'</strong>（'+(daysUntil>0?'还有 '+daysUntil+' 天':'已过 '+Math.abs(daysUntil)+' 天')+'）</div>';
+  }
+  h+=records.slice(0,7).map(function(r){
+    var duration='';if(r.startDate&&r.endDate){var sd=new Date(r.startDate),ed=new Date(r.endDate);duration=Math.round((ed-sd)/86400000)+'天'}
+    return '<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)">'+r.startDate+(r.endDate?' → '+r.endDate:'')+(duration?' · '+duration:'')+(r.cycleLength?' · 周期'+r.cycleLength+'天':'')+(r.note?' · '+esc(r.note):'')+'</div>'
+  }).join('');
+  return h;
+}
+
+function addPeriod(){
+  modal('记录经期','<div class="fg"><label class="fl">开始日期</label><input class="fi" type="date" id="pd-start" value="'+nowDate()+'"></div><div class="fg"><label class="fl">结束日期（可选）</label><input class="fi" type="date" id="pd-end"></div><div class="fg"><label class="fl">周期天数（可选，自动算）</label><input class="fi" type="number" min="20" max="45" id="pd-cycle" placeholder="如：28"><div style="font-size:11px;color:var(--t3);margin-top:4px">从上一次开始到这次开始的天数</div></div><div class="fg"><label class="fl">备注（可选）</label><input class="fi" id="pd-note" placeholder="如：腹痛、量少"></div>',()=>{
+    var s=mv('#pd-start'),e=mv('#pd-end'),c=mv('#pd-cycle'),n=mv('#pd-note');
+    if(!s)return;if(!D.health.periods)D.health.periods=[];
+    D.health.periods.unshift({id:gid(),startDate:s,endDate:e||'',cycleLength:c||'',note:n});
+    save();render('health');toast('已记录');
   });
 }
 
