@@ -399,9 +399,12 @@ a{color:var(--accent);text-decoration:none}
 
 <div id="toast-ct"></div>
 
+<script src="https://imgcache.qq.com/qcloud/cloudbase-js-sdk/2.1.1/cloudbase.full.js"></script>
 <script>
 // ═══════════════ DATA ═══════════════
 const K = 'ee_wb_v2';
+const CB_ENV = 'workbench-data-d7gzn56mjdde84e72';
+let _db = null, _cloudReady = false;
 
 function defData() {
   const t = new Date().toISOString().slice(0,10);
@@ -442,9 +445,38 @@ function defData() {
 }
 
 let D = defData();
-try{const r=localStorage.getItem(K);if(r){const p=JSON.parse(r);D={...defData(),...p,settings:{...defData().settings,...(p.settings||{})},health:{...defData().health,...(p.health||{})},skinLogs:p.skinLogs||[],skinRecs:p.skinRecs||[],skinProfile:p.skinProfile||{},goldData:p.goldData||{},goldAnalysis:p.goldAnalysis||[],reviewData:p.reviewData||{},studyQuestions:p.studyQuestions||[],studyNotes:p.studyNotes||[]}} }catch(e){}
 
-function save(){try{localStorage.setItem(K,JSON.stringify(D));updateBadge()}catch(e){toast('存储空间不足')}}
+async function cloudInit(){
+  try{
+    const app = cloudbase.init({ env: CB_ENV });
+    const auth = app.auth({ persistence: 'local' });
+    await auth.anonymousAuthProvider().signIn();
+    _db = app.database();
+    _cloudReady = true;
+    const res = await _db.collection('workbench_data').doc('main').get();
+    if(res.data && res.data.length > 0 && res.data[0].payload){
+      const p = JSON.parse(res.data[0].payload);
+      D = { ...defData(), ...p, settings: { ...defData().settings, ...(p.settings||{}) }, health: { ...defData().health, ...(p.health||{}) }, skinLogs: p.skinLogs||[], skinRecs: p.skinRecs||[], skinProfile: p.skinProfile||{}, goldData: p.goldData||{}, goldAnalysis: p.goldAnalysis||[], reviewData: p.reviewData||{}, studyQuestions: p.studyQuestions||[], studyNotes: p.studyNotes||[] };
+      return true;
+    }
+  }catch(e){}
+  try{
+    const r = localStorage.getItem(K);
+    if(r){ const p = JSON.parse(r); D = { ...defData(), ...p, settings: { ...defData().settings, ...(p.settings||{}) }, health: { ...defData().health, ...(p.health||{}) }, skinLogs: p.skinLogs||[], skinRecs: p.skinRecs||[], skinProfile: p.skinProfile||{}, goldData: p.goldData||{}, goldAnalysis: p.goldAnalysis||[], reviewData: p.reviewData||{}, studyQuestions: p.studyQuestions||[], studyNotes: p.studyNotes||[] }; }
+  }catch(e){}
+  return false;
+}
+
+async function save(){
+  try{ localStorage.setItem(K, JSON.stringify(D)); updateBadge(); }catch(e){}
+  if(_cloudReady && _db){
+    try{
+      await _db.collection('workbench_data').doc('main').set({ payload: JSON.stringify(D), updatedAt: Date.now() });
+    }catch(e){
+      try{ await _db.collection('workbench_data').add({ payload: JSON.stringify(D), updatedAt: Date.now() }); }catch(e2){}
+    }
+  }
+}
 function gid(){return 'id'+Date.now()+'_'+Math.random().toString(36).slice(2,7)}
 function nowDate(){return new Date().toISOString().slice(0,10)}
 
@@ -1560,7 +1592,7 @@ function doLogin(){
   if(u!==DEFAULT_USER||p!==DEFAULT_PASS){err.textContent='账号或密码错误';return}
   localStorage.setItem(AUTH_KEY,JSON.stringify({user:u,ts:Date.now()}));
   document.getElementById('login-screen').style.display='none';
-  initApp();
+  cloudInit().then(function(){ initApp(); });
 }
 
 function doLogout(){
@@ -1581,7 +1613,7 @@ function initApp(){
 
 if(isLoggedIn()){
   document.getElementById('login-screen').style.display='none';
-  initApp();
+  cloudInit().then(function(){ initApp(); });
 }
 
 </script>
